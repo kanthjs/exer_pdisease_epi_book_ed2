@@ -1,0 +1,46 @@
+project:
+  type: book
+  output-dir: _book
+
+book:
+  title: "Exercise in Plant Disease Epidemiology"
+  subtitle: "แบบฝึกหัดระบาดวิทยาโรคพืช (ฉบับพิมพ์ครั้งที่ 2)"
+  author: "กันต์ธณวิชญ์ ใจสงฆ์"
+  date: today
+  date-format: "D MMMM YYYY"
+  repo-url: https://github.com/kanthjs/exer_pdisease_epi_book_ed2
+  repo-actions: [edit, issue]
+  downloads: [pdf]          # ปุ่มดาวน์โหลด PDF บนฉบับเว็บ
+  search: true
+  page-navigation: true     # ปุ่มบทก่อนหน้า/ถัดไป ท้ายหน้า
+  sidebar:
+    style: docked           # สารบัญบทด้านซ้ายติดขอบ แบบ socviz.co
+    collapse-level: 1
+  page-footer:
+    center: "© กันต์ธณวิชญ์ ใจสงฆ์ · ศูนย์วิจัยข้าวปทุมธานี"
+  chapters:
+    - index.qmd
+    - 00-preface.qmd
+    - 01-key-distributions.qmd
+    - references.qmd
+  appendices:
+    - appendix-glossary.qmd
+
+bibliography: references.bib
+# csl: phytopathology.csl   # ค่าเริ่มต้นคือ Chicago author-date
+
+# ---------- เลย์เอาต์แบบขอบกว้าง (Tufte / socviz) ใช้ทั้งเว็บและ PDF ----------
+reference-location: margin   # เชิงอรรถไปอยู่ขอบขวา
+citation-location: margin    # การอ้างอิงแสดงที่ขอบขวาด้วย (ยังมีรายการท้ายเล่มตามเดิม)
+fig-cap-location: margin     # คำบรรยายรูปอยู่ขอบขวา
+# ตาราง: \sidecaption ใช้ใน longtable ของ PDF ไม่ได้ (Misplaced \noalign) จึงวางคำบรรยายไว้ด้านบน
+tbl-cap-location: top
+
+crossref:
+  fig-title: "รูปที่"
+  tbl-title: "ตารางที่"
+  eq-prefix: "สมการ"
+  fig-prefix: "รูปที่"
+  tbl-prefix: "ตารางที่"
+  sec-prefix: "หัวข้อ"
+  chapters: true

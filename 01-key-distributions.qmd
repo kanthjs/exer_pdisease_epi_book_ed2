@@ -1,0 +1,276 @@
+# การแจกแจงและแบบจำลองหลักในระบาดวิทยาด้วย R {#sec-key-distributions}
+
+<!-- เรียบเรียงจากหัวข้อของ Garrett, Esker & Sparks, Chapter 1, Exercises in Plant Disease Epidemiology 2nd ed. (APS, 2015)
+     เนื้อหาและโค้ดเขียนใหม่ ไม่ได้แปลตรงตัว -->
+
+## การเตรียมตัว {.unnumbered}
+
+แบบฝึกหัดนี้ต้องติดตั้ง R ไว้ก่อน ผู้ที่ยังไม่คุ้นกับการพิมพ์คำสั่งและการสร้างวัตถุ (object) ใน R ควรลองคำสั่งพื้นฐานสักชั่วโมงก่อนเริ่ม ตัวแบบฝึกหัดใช้เวลาประมาณหนึ่งชั่วโมง
+
+## บทนำ
+
+งานระบาดวิทยาโรคพืชแทบทุกเรื่องพึ่งการแจกแจงทางสถิติ (statistical distribution) และแบบจำลองทางคณิตศาสตร์ ไม่ว่าจะเป็นการบรรยายการระบาดในเวลา รูปแบบเชิงพื้นที่ของต้นเป็นโรค หรือผลของวิธีการควบคุมโรค การแจกแจงบอกว่าตัวแปรสุ่มมีโอกาสได้ค่าใดค่าหนึ่ง (หรือตกในช่วงใด) มากน้อยเพียงใด
+
+เราใช้การแจกแจงด้วยเหตุผลหลักสองข้อ ข้อแรกคือย่อข้อมูลจำนวนมากให้เหลือพารามิเตอร์ไม่กี่ตัว ข้อสองคือทำให้การทดสอบสมมติฐานและการประมาณช่วงความเชื่อมั่นง่ายขึ้น เมื่อข้อมูลไม่เป็นไปตาม normal distribution generalized linear model (GLM) ช่วยได้ เพราะยอมให้ตัวแปรตอบสนองมีการแจกแจงแบบ Poisson หรือ binomial ได้โดยตรง
+
+ในทำนองเดียวกัน การสร้างแบบจำลองทางระบาดวิทยามักเป็นการปรับแบบจำลองเข้ากับข้อมูล เช่น ปรับ exponential model กับความน่าจะเป็นที่สปอร์ปลิวไปถึงระยะต่าง ๆ จากแหล่งเชื้อ หรือปรับ logistic model กับความรุนแรงของโรคตามเวลา แล้วนำพารามิเตอร์ที่ได้ไปเปรียบเทียบระหว่างกรรมวิธี
+
+บทนี้แนะนำการแจกแจงและแบบจำลองที่ใช้บ่อยที่สุดในระบาดวิทยาโรคพืช (@tbl-dist) และใช้ R สำรวจว่าเมื่อเปลี่ยนพารามิเตอร์แล้วรูปร่างของการแจกแจงเปลี่ยนไปอย่างไร
+
+| การแจกแจง/แบบจำลอง | ชนิดของค่า | พารามิเตอร์ | ฟังก์ชันใน R |
+|---|---|---|---|
+| normal | ต่อเนื่อง, $-\infty$ ถึง $\infty$ | $\mu$, $\sigma$ | `dnorm`, `rnorm` |
+| Poisson | จำนวนเต็ม $\ge 0$ | $\lambda$ | `dpois`, `rpois` |
+| binomial | จำนวนเต็ม $0$ ถึง $n$ | $n$, $p$ | `dbinom`, `rbinom` |
+| exponential | ต่อเนื่อง $\ge 0$ | $\lambda$ | `dexp`, `rexp` |
+| logistic model | ต่อเนื่อง $0$ ถึง $K$ | $K$, $y_0$, $r$ | เขียนสูตรเอง |
+| beta | ต่อเนื่อง $0$ ถึง $1$ | $\alpha$, $\beta$ | `dbeta`, `rbeta` |
+| beta-binomial | จำนวนเต็ม $0$ ถึง $n$ | $n$, $\alpha$, $\beta$ | เขียนสูตรเอง |
+
+: การแจกแจงและแบบจำลองหลักในบทนี้ {#tbl-dist}
+
+ฟังก์ชันการแจกแจงใน R ใช้อักษรนำหน้าเป็นระบบ: `d` คือฟังก์ชันความน่าจะเป็น (density/mass) `p` คือความน่าจะเป็นสะสม `q` คือควอนไทล์ และ `r` คือการสุ่มค่า
+
+```{r}
+#| label: setup
+set.seed(2026)   # ให้ผลการสุ่มเหมือนเดิมทุกครั้งที่รัน
+n_sim <- 10000   # จำนวนค่าที่สุ่มในแต่ละตัวอย่าง
+```
+
+## normal distribution {#sec-normal}
+
+normal distribution หรือ bell curve เหมาะกับตัวแปรต่อเนื่องที่ค่าส่วนใหญ่กองอยู่ตรงกลางและค่าที่ห่างออกไปพบได้น้อยลงอย่างรวดเร็ว เช่น ความสูงต้นหรือผลผลิตข้าวต่อแปลง ฟังก์ชันความหนาแน่นคือ
+
+$$
+f(x) = \frac{1}{\sigma\sqrt{2\pi}} \exp\!\left[-\frac{(x-\mu)^2}{2\sigma^2}\right]
+$$
+
+โดย $\mu$ คือค่าเฉลี่ยและ $\sigma$ คือส่วนเบี่ยงเบนมาตรฐาน ($\sigma^2$ คือความแปรปรวน) หากผลผลิตมีการแจกแจงใกล้ normal distribution ค่าเฉลี่ยและความแปรปรวนสองค่าก็สรุปข้อมูลทั้งชุดได้ และการทดสอบอย่าง t-test ก็ใช้ได้ตรงไปตรงมา
+
+วิธีแรกที่จะเห็นรูปร่างของการแจกแจงคือสุ่มค่าจำนวนมากแล้ววาดฮิสโทแกรม (@fig-normal-hist) โดยตรึงแกนให้เท่ากันทุกภาพเพื่อเปรียบเทียบได้
+
+```{r}
+#| label: fig-normal-hist
+#| fig-cap: "ฮิสโทแกรมของค่าที่สุ่มจาก normal distribution 10,000 ค่า ที่ค่าเฉลี่ยและส่วนเบี่ยงเบนมาตรฐานต่างกัน"
+#| fig-height: 6
+pars <- expand.grid(sd = c(1, 3), mean = c(0, 5))
+op <- par(mfrow = c(2, 2))
+for (i in seq_len(nrow(pars))) {
+  hist(rnorm(n_sim, mean = pars$mean[i], sd = pars$sd[i]),
+       breaks = -25:25, xlim = c(-20, 20), ylim = c(0, 4000),
+       main = sprintf("mean = %g, sd = %g", pars$mean[i], pars$sd[i]),
+       xlab = "x", ylab = "ความถี่", col = "grey80")
+}
+par(op)
+```
+
+วิธีที่สองคือวาดฟังก์ชันความหนาแน่นโดยตรงด้วย `curve()` (@fig-normal-curve) ซึ่งไม่มีความแปรผันจากการสุ่ม
+
+```{r}
+#| label: fig-normal-curve
+#| fig-cap: "ฟังก์ชันความหนาแน่นของ normal distribution เส้นทึบ sd = 1 เส้นประ sd = 3"
+curve(dnorm(x, mean = 0, sd = 1), from = -15, to = 15,
+      ylim = c(0, 0.4), xlab = "x", ylab = "f(x)", lwd = 2)
+curve(dnorm(x, mean = 5, sd = 1), add = TRUE, lwd = 2, col = "firebrick")
+curve(dnorm(x, mean = 0, sd = 3), add = TRUE, lwd = 2, lty = 2)
+curve(dnorm(x, mean = 5, sd = 3), add = TRUE, lwd = 2, lty = 2, col = "firebrick")
+legend("topleft", bty = "n", lwd = 2, lty = c(1, 1, 2, 2),
+       col = c("black", "firebrick", "black", "firebrick"),
+       legend = c("mean 0, sd 1", "mean 5, sd 1", "mean 0, sd 3", "mean 5, sd 3"))
+```
+
+normal distribution สมมาตรเสมอ และให้ความน่าจะเป็น (แม้น้อยมาก) แก่ค่าติดลบ ซึ่งเป็นไปไม่ได้สำหรับตัวแปรอย่างจำนวนแผลหรือผลผลิต ในการวิเคราะห์ที่สมมติ normality เราจึงตรวจ residual (ผลต่างระหว่างค่าทำนายกับค่าสังเกต) ก่อนเสมอ เช่น
+
+```{r}
+#| label: normal-check
+y <- rnorm(30, mean = 4.5, sd = 0.6)   # ข้อมูลสมมติ: ผลผลิต (ตัน/เฮกตาร์) 30 แปลง
+shapiro.test(y)
+```
+
+## Poisson distribution {#sec-poisson}
+
+Poisson distribution ใช้กับข้อมูลนับ (count) ที่เป็นจำนวนเต็มไม่ติดลบ เช่น จำนวนแผลบนใบ มีพารามิเตอร์เดียวคือ $\lambda$ ซึ่งเป็นทั้งค่าเฉลี่ยและความแปรปรวน
+
+$$
+P(X = x) = \frac{\lambda^x e^{-\lambda}}{x!}, \qquad x = 0, 1, 2, \ldots
+$$
+
+สมมติฐานเบื้องหลังคือเหตุการณ์เกิดขึ้นอย่างสุ่มและเป็นอิสระต่อกัน Poisson จึงเป็นแบบจำลองอ้างอิงของรูปแบบเชิงพื้นที่แบบสุ่ม เมื่อข้อมูลจริงมีความแปรปรวนมากกว่าค่าเฉลี่ยชัดเจน (overdispersion) แสดงว่าโรคเกาะกลุ่ม
+
+```{r}
+#| label: fig-poisson
+#| fig-cap: "ความน่าจะเป็นของ Poisson distribution ที่ค่า λ ต่าง ๆ แต่ละแท่งคือค่าจำนวนเต็มหนึ่งค่า"
+#| fig-height: 6
+op <- par(mfrow = c(2, 2))
+for (lam in c(0.7, 3, 10, 25)) {
+  x <- 0:45
+  plot(x, dpois(x, lambda = lam), type = "h", lwd = 2,
+       ylim = c(0, 0.5), xlab = "จำนวนแผลต่อใบ", ylab = "P(X = x)",
+       main = bquote(lambda == .(lam)))
+}
+par(op)
+```
+
+ตรวจว่าค่าเฉลี่ยกับความแปรปรวนของค่าที่สุ่มได้ใกล้กันจริง
+
+```{r}
+#| label: poisson-meanvar
+lesions <- rpois(n_sim, lambda = 3)
+c(mean = mean(lesions), variance = var(lesions))
+```
+
+เมื่อ $\lambda$ สูงขึ้น Poisson distribution จะเข้าใกล้ normal distribution แต่ที่ $\lambda$ ต่ำ รูปร่างเบ้ขวาชัดเจนและห่างจาก normal distribution มาก
+
+## binomial distribution {#sec-binomial}
+
+binomial distribution อธิบายจำนวน "ความสำเร็จ" $x$ จากการทดลอง $n$ ครั้งที่แต่ละครั้งมีผลได้สองแบบและมีความน่าจะเป็นสำเร็จ $p$ เท่ากัน เช่น จำนวนต้นเป็นโรคจาก $n$ ต้นในหนึ่งกอหรือหนึ่งจุดสำรวจ คำว่า "สำเร็จ" เป็นเพียงชื่อ จะหมายถึง "ต้นติดเชื้อ" หรือ "เกษตรกรตัดสินใจพ่นสาร" ก็ได้
+
+$$
+P(X = x) = \binom{n}{x} p^x (1-p)^{n-x}, \qquad E(X) = np, \quad \mathrm{Var}(X) = np(1-p)
+$$
+
+กรณี $n = 1$ คือ Bernoulli distribution ผลเป็น 0 หรือ 1 เท่านั้น
+
+```{r}
+#| label: fig-binomial
+#| fig-cap: "binomial distribution ของจำนวนต้นเป็นโรคในหน่วยสุ่มขนาด n = 20 ต้น ที่ความน่าจะเป็นติดเชื้อต่างกัน"
+#| fig-height: 6
+op <- par(mfrow = c(2, 2))
+x <- 0:20
+for (p in c(0.05, 0.2, 0.5, 0.9)) {
+  plot(x, dbinom(x, size = 20, prob = p), type = "h", lwd = 2,
+       ylim = c(0, 0.4), xlab = "จำนวนต้นเป็นโรค", ylab = "P(X = x)",
+       main = paste("n = 20, p =", p))
+}
+par(op)
+```
+
+เมื่อ $n$ มากและ $p$ อยู่ระดับกลาง binomial distribution จะใกล้ normal distribution แต่ที่ $p$ ใกล้ 0 หรือ 1 จะเบ้มาก การวิเคราะห์ข้อมูลอุบัติการณ์ของโรค (disease incidence) จึงควรใช้ GLM แบบ binomial (`glm(..., family = binomial)`) แทนการถือว่าสัดส่วนมี normal distribution
+
+## exponential distribution และ exponential model {#sec-exponential}
+
+exponential distribution เป็นค่าต่อเนื่องไม่ติดลบ ความหนาแน่นลดลงอย่างรวดเร็วเมื่อค่าสูงขึ้น
+
+$$
+f(x) = \lambda e^{-\lambda x}, \qquad x \ge 0
+$$
+
+โดย $\lambda$ คืออัตรา และ $1/\lambda$ คือค่าเฉลี่ย รูปแบบนี้ใช้บรรยาย disease gradient ที่ความเสี่ยงลดลงเร็วเมื่อห่างจากแหล่งเชื้อ
+
+```{r}
+#| label: fig-exp-hist
+#| fig-cap: "ฮิสโทแกรมของระยะทางที่สุ่มจาก exponential distribution ที่อัตราต่างกัน"
+#| fig-height: 6
+op <- par(mfrow = c(2, 2))
+for (rate in c(0.1, 0.2, 0.3, 0.4)) {
+  d <- rexp(n_sim, rate = rate)
+  hist(d[d <= 100], breaks = seq(0, 100, 5), ylim = c(0, 10000),
+       main = paste("rate =", rate), xlab = "ระยะทางจากแหล่งเชื้อ (m)",
+       ylab = "ความถี่", col = "grey80")
+}
+par(op)
+```
+
+ในทางกลับกัน ความน่าจะเป็นสะสม $F(x) = 1 - e^{-\lambda x}$ เป็นเส้นที่เพิ่มขึ้นแล้วอิ่มตัวที่ 1 (@fig-exp-curve) ซึ่งมีรูปเดียวกับแบบจำลอง monomolecular ของความก้าวหน้าของโรคตามเวลา
+
+```{r}
+#| label: fig-exp-curve
+#| fig-cap: "ฟังก์ชันความหนาแน่น f(x) ที่ลดลง และความน่าจะเป็นสะสม F(x) ที่เพิ่มขึ้น ของ exponential distribution λ = 0.5"
+lambda <- 0.5
+curve(dexp(x, rate = lambda), from = 0, to = 15, ylim = c(0, 1),
+      xlab = "x", ylab = "ค่า", lwd = 2)
+curve(pexp(x, rate = lambda), add = TRUE, lwd = 2, lty = 2)
+legend("right", bty = "n", lwd = 2, lty = 1:2, legend = c("f(x)", "F(x)"))
+```
+
+exponential model ยังใช้กับความก้าวหน้าของโรคในระยะแรกของการระบาด $y = y_0 e^{rt}$ ซึ่งเพิ่มขึ้นโดยไม่มีขีดจำกัด จึงใช้ได้เฉพาะช่วงที่โรคยังต่ำ
+
+## logistic model {#sec-logistic}
+
+logistic model เพิ่มขีดจำกัดบน $K$ (carrying capacity) เข้าไปในการเพิ่มแบบ exponential จึงได้เส้นโค้งรูปตัว S ที่ใช้กับความก้าวหน้าของโรคแบบหลายวงจรและการเจริญเติบโตของพืช
+
+$$
+y(t) = \frac{K y_0 e^{rt}}{K + y_0\left(e^{rt} - 1\right)}
+$$
+
+โดย $y_0$ คือระดับโรคที่เวลา $t = 0$ และ $r$ คืออัตราการเพิ่ม เมื่อวัดโรคเป็นสัดส่วน มักกำหนด $K = 1$
+
+```{r}
+#| label: fig-logistic
+#| fig-cap: "logistic model ที่ K = 100 และ y0 = 5 เมื่ออัตราการเพิ่ม r ต่างกัน"
+logistic <- function(t, K, y0, r) K * y0 * exp(r * t) / (K + y0 * (exp(r * t) - 1))
+curve(logistic(x, K = 100, y0 = 5, r = 0.5), from = 0, to = 20,
+      ylim = c(0, 100), xlab = "เวลา", ylab = "ระดับโรค (%)", lwd = 2)
+curve(logistic(x, K = 100, y0 = 5, r = 1), add = TRUE, lwd = 2, lty = 2)
+curve(logistic(x, K = 100, y0 = 5, r = 2), add = TRUE, lwd = 2, lty = 3)
+legend("bottomright", bty = "n", lwd = 2, lty = 1:3,
+       legend = paste("r =", c(0.5, 1, 2)))
+```
+
+## beta และ beta-binomial distribution {#sec-beta}
+
+ข้อมูลอุบัติการณ์จริงมักแปรปรวนมากกว่าที่ binomial distribution คาดไว้ เพราะต้นเป็นโรคเกาะกลุ่ม ความน่าจะเป็นติดเชื้อ $p$ จึงไม่คงที่ระหว่างหน่วยสุ่ม beta-binomial distribution จัดการเรื่องนี้โดยให้ $p$ เองเป็นตัวแปรสุ่มที่มี beta distribution
+
+beta distribution มีค่าระหว่าง 0 ถึง 1 และมีพารามิเตอร์รูปร่างสองตัว $\alpha$ และ $\beta$
+
+$$
+f(p) = \frac{p^{\alpha-1}(1-p)^{\beta-1}}{B(\alpha,\beta)}, \qquad E(p) = \frac{\alpha}{\alpha+\beta}, \quad \mathrm{Var}(p) = \frac{\alpha\beta}{(\alpha+\beta)^2(\alpha+\beta+1)}
+$$
+
+โดย $B(\alpha,\beta)$ คือค่าคงที่ที่ทำให้พื้นที่ใต้เส้นโค้งเท่ากับ 1 รูปร่างของ beta ยืดหยุ่นมาก (@fig-beta) เมื่อ $\alpha = \beta = 1$ จะเป็น uniform distribution
+
+```{r}
+#| label: fig-beta
+#| fig-cap: "ฟังก์ชันความหนาแน่นของ beta distribution ที่พารามิเตอร์รูปร่างต่างกัน"
+#| fig-height: 6
+shapes <- list(c(1, 1), c(1, 5), c(5, 1), c(5, 5))
+op <- par(mfrow = c(2, 2))
+for (s in shapes) {
+  curve(dbeta(x, s[1], s[2]), from = 0, to = 1, lwd = 2,
+        xlab = "p", ylab = "f(p)",
+        main = bquote(alpha == .(s[1]) ~ "," ~ beta == .(s[2])))
+}
+par(op)
+```
+
+ความน่าจะเป็นของ beta-binomial เขียนได้จากฟังก์ชัน beta ของ R โดยตรง
+
+$$
+P(X = x) = \binom{n}{x}\frac{B(x+\alpha,\; n-x+\beta)}{B(\alpha,\beta)}
+$$
+
+```{r}
+#| label: fig-betabinom
+#| fig-cap: "เปรียบเทียบ binomial กับ beta-binomial ที่ค่าเฉลี่ยเท่ากัน (n = 20, p = 0.2) beta-binomial มีหางยาวกว่า สะท้อนการเกาะกลุ่มของโรค"
+dbetabinom <- function(x, n, a, b) choose(n, x) * beta(x + a, n - x + b) / beta(a, b)
+x <- 0:20
+bin <- dbinom(x, size = 20, prob = 0.2)
+bb  <- dbetabinom(x, n = 20, a = 1, b = 4)    # E(p) = 1/(1+4) = 0.2
+barplot(rbind(bin, bb), beside = TRUE, names.arg = x,
+        col = c("grey40", "grey80"), xlab = "จำนวนต้นเป็นโรคจาก 20 ต้น",
+        ylab = "P(X = x)", legend.text = c("binomial", "beta-binomial"),
+        args.legend = list(bty = "n"))
+```
+
+ตรวจความแปรปรวนจากการจำลอง: สุ่ม $p$ จาก beta ก่อน แล้วสุ่มจำนวนต้นเป็นโรคจาก binomial
+
+```{r}
+#| label: betabinom-sim
+p_i <- rbeta(n_sim, shape1 = 1, shape2 = 4)
+x_bb  <- rbinom(n_sim, size = 20, prob = p_i)
+x_bin <- rbinom(n_sim, size = 20, prob = 0.2)
+rbind(binomial      = c(mean = mean(x_bin), var = var(x_bin)),
+      beta_binomial = c(mean = mean(x_bb),  var = var(x_bb)))
+```
+
+ค่าเฉลี่ยใกล้กัน แต่ความแปรปรวนของ beta-binomial สูงกว่ามาก นี่คือหลักการเบื้องหลังการวัดการเกาะกลุ่มของอุบัติการณ์ของโรคที่จะพบในบทต่อ ๆ ไป
+
+## แบบฝึกหัด {#sec-ch1-exercises}
+
+1. **normal distribution** เปลี่ยนค่าเฉลี่ยโดยคง sd ไว้ แล้วเปลี่ยน sd โดยคงค่าเฉลี่ยไว้ อธิบายว่าพารามิเตอร์แต่ละตัวมีผลต่อรูปร่างและตำแหน่งของเส้นโค้งอย่างไร
+2. ใช้ `pnorm()` หาความน่าจะเป็นที่ผลผลิตจะติดลบ ถ้าผลผลิตมี normal distribution ค่าเฉลี่ย 4.5 และ sd 0.6 ตัน/เฮกตาร์ แล้วลองกับ sd 3 ผลนี้บอกอะไรเกี่ยวกับความเหมาะสมของ normal distribution
+3. **Poisson distribution** วาดความน่าจะเป็นของ Poisson ที่ $\lambda = 15$ ทับด้วยเส้นโค้ง normal `dnorm(x, 15, sqrt(15))` การประมาณด้วย normal distribution ใช้ได้ดีเพียงใด แล้วลองที่ $\lambda = 1$
+4. **binomial distribution** ถ้าสำรวจหน่วยสุ่มละ 20 ต้นและ $p = 0.1$ ความน่าจะเป็นที่จะไม่พบต้นเป็นโรคเลยในหน่วยสุ่มหนึ่งเป็นเท่าใด และต้องเพิ่มขนาดหน่วยสุ่มเป็นกี่ต้นจึงจะลดความน่าจะเป็นนี้ให้ต่ำกว่า 0.05
+5. **exponential** ระยะทางเฉลี่ยของการแพร่กระจายเมื่อ rate = 0.2 m⁻¹ เป็นเท่าใด ใช้ `pexp()` หาสัดส่วนของสปอร์ที่ตกภายใน 10 m
+6. **logistic** คงค่า $r$ ไว้แล้วเปลี่ยน $y_0$ และ $K$ ทีละตัว เวลาที่โรคถึงครึ่งหนึ่งของ $K$ เปลี่ยนไปอย่างไร (แนะ: แก้สมการหา $t$ ที่ $y = K/2$)
+7. **beta-binomial** คงค่าเฉลี่ย $\alpha/(\alpha+\beta) = 0.2$ แต่เพิ่ม $\alpha + \beta$ เป็น 50 และ 500 ความแปรปรวนของ beta-binomial เปลี่ยนไปอย่างไร และเข้าใกล้การแจกแจงใด
