@@ -25,6 +25,7 @@ book:
     - 02-models-of-disease-progress.qmd
     - 03-visualizing-describing-dpc.qmd
     - 04-analysis-of-spatial-pattern.qmd
+    - 05-patterns-distributions-and-sampling.qmd
     - references.qmd
   appendices:
     - appendix-glossary.qmd

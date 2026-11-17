@@ -1,0 +1,215 @@
+# รูปแบบ การแจกแจง และการสุ่มตัวอย่างโรคพืช {#sec-patterns-distributions-sampling}
+
+<!-- เรียบเรียงจากหัวข้อของ Chapter 5: Patterns, Distributions, and Sampling, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
+     เน้นการวิเคราะห์การแจกแจงเชิงพื้นที่ (Binomial vs Beta-Binomial), Taylor's / Binary Power Law และการวางแผนสุ่มตัวอย่าง -->
+
+## การเตรียมตัว {.unnumbered}
+
+แบบฝึกหัดนี้ต่อยอดจาก @sec-spatial-patterns โดยเชื่อมโยงระหว่างรูปแบบเชิงพื้นที่ (spatial pattern) เข้ากับ **การแจกแจงทางสถิติ (probability distributions)** และ **การออกแบบแผนการสุ่มตัวอย่าง (sampling plans)** ในแปลงปลูก ต้องติดตั้งแพ็กเกจ `tidyverse` และ `epiphy` ใน R ก่อนเริ่ม
+
+## บทนำ
+
+ในการสำรวจโรคพืชในแปลงเกษตรกรหรือแปลงทดลองขนาดใหญ่ เช่น การประเมินอุบัติการณ์ของโรคใบขีดสีน้ำตาล (narrow brown leaf spot) หรือโรคไหม้ข้าว (rice blast) เราไม่สามารถตรวจนับข้าวได้ทุกกอทั้งทุ่ง การสุ่มตัวอย่าง (sampling) จึงเป็นหัวใจสำคัญของการเก็บข้อมูล
+
+อย่างไรก็ดี ประสิทธิภาพและความแม่นยำของแผนการสุ่มตัวอย่างขึ้นอยู่กับ **รูปแบบเชิงพื้นที่ของโรค (spatial pattern)** อย่างแยกไม่ออก:
+1. หากโรคกระจายตัว **แบบสุ่ม (random)**: จำนวนหน่วยเป็นโรคต่อแปลงย่อยจะเป็นไปตาม **Binomial distribution** (สำหรับข้อมูลอุบัติการณ์) หรือ **Poisson distribution** (สำหรับข้อมูลการนับ) ความแปรปรวนจะถูกกำหนดด้วยค่าเฉลี่ยโดยตรง
+2. หากโรคมี **การเกาะกลุ่ม (aggregation)**: ความแปรปรวนจริงในแปลงจะสูงกว่าที่คาดหมายตามแบบสุ่มอย่างมาก (เรียกว่า **Overdispersion**) ข้อมูลจะสอดคล้องกับ **Beta-Binomial distribution** หรือ **Negative Binomial distribution**
+
+หากนักวิจัยเข้าใจการกระจายตัวผิดพลาดและคิดว่าโรคกระจายแบบสุ่ม ทั้งที่ในแปลงจริงโรคเกิดเป็นหย่อม (aggregated) ตัวอย่างที่สุ่มมาจะไม่เพียงพอ ทำให้ค่าประมาณความรุนแรงของโรคคลาดเคลื่อนสูงมาก
+
+ในบทนี้ เราจะศึกษา:
+- การเปรียบเทียบและฟิตการแจกแจงแบบสุ่มเทียบกับการแจกแจงแบบเกาะกลุ่มด้วยฟังก์ชัน `fit_two_distr()`
+- กฎยกกำลังของความแปรปรวน (Taylor's Power Law และ Binary Power Law) ด้วย `power_law()`
+- การคำนวณขนาดตัวอย่างที่เหมาะสม (optimum sample size) ตามระดับการเกาะกลุ่มของโรค
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+library(tidyverse)
+library(epiphy)
+
+theme_set(theme_minimal(base_family = "Google Sans"))
+```
+
+---
+
+## การเปรียบเทียบการแจกแจง: Binomial vs Beta-Binomial {#sec-two-distr}
+
+เมื่อสุ่มเก็บตัวอย่างแปลงย่อยที่มีขนาด $n$ หน่วยเท่า ๆ กัน (เช่น กอข้าว 10 กอต่อจุดสุ่ม) และนับจำนวนกอที่เป็นโรค ($x$ โดย $0 \le x \le n$):
+
+1. **Binomial distribution (สมมติฐานแบบสุ่ม):**
+$$
+P(X = x) = \binom{n}{x} p^x (1 - p)^{n - x}
+$$
+ความแปรปรวนทางทฤษฎีคือ $V_{bin} = n p (1 - p)$
+
+2. **Beta-Binomial distribution (สมมติฐานแบบเกาะกลุ่ม):**
+สมมติให้ค่าความน่าจะเป็นที่ต้นจะเป็นโรค ($p$) มีความผันแปรระหว่างจุดสุ่มตามการแจกแจงแบบ Beta ($\alpha, \beta$):
+$$
+P(X = x) = \binom{n}{x} \frac{B(x + \alpha, n - x + \beta)}{B(\alpha, \beta)}
+$$
+ความแปรปรวนของ Beta-Binomial จะสูงกว่า Binomial เสมอ โดยมีตัวคูณความแปรปรวนเกิน (overdispersion parameter $\theta = 1/(\alpha + \beta)$ หรือสัมประสิทธิ์สหสัมพันธ์ภายในกลุ่ม $\rho$):
+$$
+V_{bb} = n p (1 - p) [1 + (n - 1)\rho]
+$$
+
+### การปรับการแจกแจงด้วย `epiphy::fit_two_distr`
+
+เราใช้ข้อมูลการระบาดของโรคไวรัส `citrus_ctv` ในแพ็กเกจ `epiphy` โดยแบ่งแปลงย่อยขนาด $2 \times 2$ ต้น ($n = 4$):
+
+```{r}
+#| label: fit-distr-demo
+data("citrus_ctv")
+
+# จัดกลุ่มแปลงย่อยขนาด 2x2 ต้น ในปี 1991
+ctv_1991 <- citrus_ctv$IVI3and4 |> 
+  filter(t == 1991) |> 
+  mutate(
+    quad_x = ceiling(x / 2),
+    quad_y = ceiling(y / 2)
+  ) |> 
+  group_by(quad_x, quad_y) |> 
+  summarise(
+    i = sum(i),   # จำนวนต้นเป็นโรคในแปลงย่อย
+    n = n(),       # จำนวนต้นทั้งหมดในแปลงย่อย
+    .groups = "drop"
+  )
+
+# สร้าง object incidence และฟิตการแจกแจงทั้งสองแบบ
+ctv_inc <- incidence(ctv_1991)
+distr_fit <- fit_two_distr(ctv_inc)
+distr_fit
+```
+
+ผลการฟิตชี้ให้เห็นว่า:
+- ค่าประมาณพารามิเตอร์ $\rho = 0.075$ ของ Beta-Binomial สะท้อนว่ามีความผูกพันของการเกิดโรคระหว่างต้นในแปลงย่อยเดียวกัน
+- สถิติทดสอบภาวะสารูปดี (goodness-of-fit test) และ Log-likelihood ชี้ว่า Beta-Binomial อธิบายข้อมูลจริงได้เหนือกว่า Binomial อย่างชัดเจน
+
+```{r}
+#| label: fig-distr-plot
+#| fig-cap: "เปรียบเทียบความถี่สังเกตจริงกับค่าคาดหมายจาก Binomial และ Beta-Binomial distribution"
+#| fig-width: 7
+#| fig-height: 4.5
+plot(distr_fit)
+```
+
+---
+
+## Binary Power Law (BPL) {#sec-binary-power-law}
+
+Hughes and Madden (1992) ได้พัฒนากฎยกกำลังสำหรับข้อมูลอุบัติการณ์ (Binary Power Law; BPL) ซึ่งดัดแปลงมาจากกฎของ Taylor (1961) เพื่ออธิบายความสัมพันธ์ระหว่างความแปรปรวนจริงที่สังเกตได้ ($V$) กับความแปรปรวนทางทฤษฎีของการกระจายแบบสุ่ม ($V_{bin}$):
+
+$$
+V = A \, (V_{bin})^b
+$$
+
+เมื่อใส่ลอการิทึมธรรมชาติทั้งสองข้าง จะได้สมการเชิงเส้น:
+
+$$
+\ln(V) = \ln(A) + b \ln(V_{bin})
+$$ {#eq-bpl}
+
+การตีความพารามิเตอร์:
+- ถ้า $A = 1$ และ $b = 1$: การระบาดเป็นแบบสุ่มสมบูรณ์ในทุกระดับความรุนแรง
+- ถ้า $b > 1$ หรือ $A > 1$: โรคมีการ **เกาะกลุ่ม (aggregated)** ยิ่งค่า $b$ และ $A$ สูง แสดงว่าระดับการเกาะกลุ่มยิ่งรุนแรง
+
+### การวิเคราะห์ Binary Power Law ด้วย `epiphy::power_law`
+
+เราสามารถติดตามการระบาดของโรคไวรัสข้ามหลายช่วงเวลา (เช่น ปี 1991 ถึง 1995) เพื่อประเมินพารามิเตอร์ $A$ และ $b$:
+
+```{r}
+#| label: bpl-demo
+# จัดกลุ่มข้อมูลรายปีให้อยู่ในรูป list ของ incidence objects
+years <- unique(citrus_ctv$IVI3and4$t)
+ctv_multi_year <- lapply(years, function(yr) {
+  df <- citrus_ctv$IVI3and4 |> 
+    filter(t == yr) |> 
+    mutate(quad_x = ceiling(x / 2), quad_y = ceiling(y / 2)) |> 
+    group_by(quad_x, quad_y) |> 
+    summarise(i = sum(i), n = n(), .groups = "drop")
+  incidence(df)
+})
+names(ctv_multi_year) <- paste0("Year_", years)
+
+# วิเคราะห์ Binary Power Law
+bpl_fit <- power_law(ctv_multi_year)
+bpl_fit
+```
+
+```{r}
+#| label: fig-bpl-plot
+#| fig-cap: "Binary power law: ความสัมพันธ์เชิงเส้นระหว่าง ln(V) กับ ln(V_bin) ตลอดหลายปีการระบาด"
+#| fig-width: 6
+#| fig-height: 4.5
+plot(bpl_fit)
+```
+
+จาก @fig-bpl-plot ค่าความชัน $b > 1$ (ประมาณ $1.36$) ยืนยันว่าการเกาะกลุ่มของโรคจะยิ่งทวีความรุนแรงขึ้นเมื่อระดับโรคในแปลงเพิ่มขึ้น
+
+---
+
+## การออกแบบแผนการสุ่มตัวอย่าง (Sampling Plans) {#sec-sample-size}
+
+เป้าหมายสูงสุดของการศึกษา spatial pattern คือการกำหนด **ขนาดตัวอย่างที่เหมาะสม ($N$)** เพื่อให้การประมาณอุบัติการณ์เฉลี่ยมีความคลาดเคลื่อนไม่เกินระดับที่ยอมรับได้ (เช่น relative error $D = 0.10$ หรือ 10% ของค่าเฉลี่ย)
+
+สมการคำนวณจำนวนหน่วยตัวอย่าง (quadrats) ตาม Karandinos (1976) และ Madden et al. (2007):
+
+1. **กรณีโรคกระจายแบบสุ่ม (Binomial):**
+$$
+N_{rand} = \frac{Z_{\alpha/2}^2}{D^2} \left( \frac{1 - p}{n p} \right)
+$$
+
+2. **กรณีโรคเกาะกลุ่ม (Beta-Binomial / Binary Power Law):**
+เมื่อโรคมีการเกาะกลุ่ม ความแปรปรวนจริงจะสูงกว่าค่าสุ่มด้วยตัวคูณ $1 + (n - 1)\rho$:
+$$
+N_{agg} = N_{rand} \times [1 + (n - 1)\rho]
+$$
+
+```{r}
+#| label: fig-sample-size-curve
+#| fig-cap: "การเปรียบเทียบจำนวนหน่วยตัวอย่างที่ต้องสุ่ม (N) ระหว่างโรคแบบสุ่ม (rho = 0) และโรคแบบเกาะกลุ่ม (rho = 0.10 และ 0.25) ที่ระดับความคลาดเคลื่อน D = 10% (n = 10)"
+#| fig-width: 7
+#| fig-height: 4.5
+p_seq <- seq(0.02, 0.50, by = 0.01)
+n_per_quad <- 10
+D <- 0.10
+z_crit <- 1.96
+
+df_sample <- expand_grid(p = p_seq, rho = c(0, 0.10, 0.25)) |> 
+  mutate(
+    N_rand = (z_crit^2 / D^2) * ((1 - p) / (n_per_quad * p)),
+    N_required = N_rand * (1 + (n_per_quad - 1) * rho),
+    Pattern = factor(paste0("rho = ", rho), levels = c("rho = 0", "rho = 0.1", "rho = 0.25"))
+  )
+
+ggplot(df_sample, aes(x = p, y = N_required, color = Pattern, linetype = Pattern)) +
+  geom_line(linewidth = 1) +
+  scale_y_continuous(limits = c(0, 3000)) +
+  labs(
+    title = "Required Sample Size vs. Disease Incidence",
+    x = "Mean Disease Incidence (p)",
+    y = "Required Number of Quadrats (N)",
+    color = "Aggregation level",
+    linetype = "Aggregation level"
+  )
+```
+
+@fig-sample-size-curve ชี้ให้เห็นหลักการที่สำคัญมากในทางปฏิบัติ:
+- เมื่ออุบัติการณ์ของโรคต่ำ ($p < 0.10$) ต้องใช้จำนวนตัวอย่างมหาศาลเพื่อตรวจจับโรคให้แม่นยำ
+- **การเกาะกลุ่ม ($\rho > 0$) เพิ่มจำนวนตัวอย่างที่ต้องสุ่มอย่างทวีคูณ** เช่น ที่ $\rho = 0.25$ และ $n = 10$ เราต้องสุ่มตัวอย่างเพิ่มขึ้นถึง $1 + 9(0.25) = 3.25$ เท่า เมื่อเทียบกับกรณีที่สมมติว่าโรคกระจายแบบสุ่ม
+
+---
+
+## แบบฝึกหัดท้ายบท {#sec-ch5-exercises}
+
+1. **การคำนวณ Overdispersion:** ในการสำรวจโรคไหม้คอรวงข้าว สุ่มเก็บแปลงย่อยละ 10 รวง ($n = 10$) พบว่าอุบัติการณ์เฉลี่ย $p = 0.20$ แต่ความแปรปรวนของสัดส่วนรวงเป็นโรคจากการสำรวจมีค่า $V = 0.032$
+   - จงคำนวณความแปรปรวนทางทฤษฎีแบบ Binomial ($V_{bin} = p(1-p)/n$)
+   - คำนวณอัตราส่วน Overdispersion ($V / V_{bin}$) และประเมินค่าสัมประสิทธิ์สหสัมพันธ์ $\rho$
+2. **การตีความ Binary Power Law:** นักวิจัยฟิต Binary Power Law จากข้อมูลโรคกาบใบแห้ง 12 แปลง ได้สมการ $\ln(V) = 0.85 + 1.28 \ln(V_{bin})$
+   - จงแปลความหมายของพารามิเตอร์ $A = \exp(0.85)$ และ $b = 1.28$
+   - รูปแบบเชิงพื้นที่ของโรคกาบใบแห้งในแปลงนี้เป็นแบบสุ่มหรือเกาะกลุ่ม เพราะเหตุใด
+3. **การวางแผนสุ่มตัวอย่างในแปลงนา:** หากน้องกันต์ต้องการสำรวจโรคขอบใบแห้งในแปลงนา โดยยอมรับความคลาดเคลื่อนสัมพัทธ์ $D = 0.15$ ที่ระดับความเชื่อมั่น 95% ($Z = 1.96$) และคาดว่าโรคมีอุบัติการณ์เฉลี่ยราว 15% ($p = 0.15$) โดยสุ่มนับจุดละ 10 กอ ($n = 10$):
+   - หากโรคกระจายแบบสุ่ม ($\rho = 0$) ต้องสุ่มกี่จุด
+   - หากโรคมีการเกาะกลุ่มที่ $\rho = 0.15$ ต้องสุ่มเพิ่มขึ้นเป็นกี่จุด
+4. **ข้อได้เปรียบของ Beta-Binomial เทียบกับ Binomial:** อธิบายข้อจำกัดของการใช้ Binomial regression (logistic GLM) เมื่อข้อมูลในแปลงมีความแปรปรวนเกิน (overdispersion) และเหตุใด Beta-Binomial จึงช่วยแก้ปัญหานี้ได้
