@@ -1,0 +1,203 @@
+# การวิเคราะห์รูปแบบเชิงพื้นที่ของโรคพืช {#sec-spatial-patterns}
+
+<!-- เรียบเรียงจากหัวข้อของ Chapter 4: Analysis of Spatial Pattern, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
+     เน้นการวิเคราะห์ spatial pattern ของโรคพืช (Random vs Aggregated) ด้วย R ผ่าน epiphy และ r4pde -->
+
+## การเตรียมตัว {.unnumbered}
+
+แบบฝึกหัดนี้ศึกษาพลวัตของโรคพืชในมิติเชิงพื้นที่ (spatial epidemiology) เพื่อตรวจวัดว่าโรคพืชเกิดขึ้นแบบสุ่ม (random pattern) หรือมีการเกาะกลุ่ม (aggregated / clustered pattern) ต้องติดตั้งแพ็กเกจ `tidyverse`, `epiphy` และ `r4pde` ใน R ก่อนเริ่ม
+
+## บทนำ
+
+นอกเหนือจากการเปลี่ยนแปลงของระดับโรคตามเวลา (@sec-models-of-disease-progress และ @sec-visualizing-describing-dpc) มิติเชิงพื้นที่ (spatial pattern) เป็นอีกหนึ่งเสาหลักที่บอกเล่าชีววิทยาและพฤติกรรมการระบาดของเชื้อก่อโรค
+
+รูปแบบเชิงพื้นที่ (spatial pattern) ของพืชที่เป็นโรคในแปลงจำแนกได้เป็น 3 รูปแบบหลัก (@tbl-spatial-types):
+1. **แบบสุ่ม (Random pattern):** การเกิดโรคในแต่ละจุดเป็นอิสระต่อกัน มักพบเมื่อเชื้อแพร่กระจายมาจากแหล่งเชื้อภายนอกแปลงในระยะไกลผ่านกระแสลมปั่นป่วน หรือมีแมลงพาหะที่บินสุ่มเข้าสู่แปลง
+2. **แบบเกาะกลุ่ม (Aggregated / Clustered pattern):** พืชที่เป็นโรคอยู่ใกล้ชิดกันมากกว่าที่ควรจะเป็นตามการสุ่ม มักพบในโรคที่มีการแพร่กระจายระยะใกล้ (secondary spread) จากต้นติดเชื้อสู่ต้นข้างเคียงผ่านหยดน้ำฝนกระเด็น หรือเชื้อก่อโรคที่อาศัยอยู่ในดินเป็นหย่อม เช่น โรคกาบใบแห้งข้าว
+3. **แบบสม่ำเสมอ (Uniform / Regular pattern):** จุดที่เป็นโรคมีระยะห่างเท่า ๆ กันอย่างเป็นระเบียบ พบได้ยากมากในธรรมชาติ แต่มักเกิดจากการจัดการของมนุษย์
+
+| รูปแบบเชิงพื้นที่ | นิยามทางสถิติ | กลไกทางชีววิทยาที่เกี่ยวข้อง | การแจกแจงทางสถิติที่สอดคล้อง |
+|---|---|---|---|
+| Random | ความแปรปรวนเท่ากับค่าเฉลี่ย ($\sigma^2 = \mu$) | เชื้อปลิวมาจากระยะไกล ไม่ติดเชื้อต่อ | Poisson หรือ Binomial |
+| Aggregated | ความแปรปรวนสูงกว่าค่าเฉลี่ย ($\sigma^2 > \mu$) | เชื้อระบาดระยะใกล้จากต้นติดเชื้อ, ดิน | Negative Binomial หรือ Beta-Binomial |
+| Regular | ความแปรปรวนต่ำกว่าค่าเฉลี่ย ($\sigma^2 < \mu$) | การแก่งแย่งแข่งขัน, การปลูกระยะห่าง | Binomial (ที่มีการจำกัด) |
+
+: รูปแบบเชิงพื้นที่ของโรคพืชและสมบัติทางสถิติ {#tbl-spatial-types}
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+library(tidyverse)
+library(epiphy)
+library(r4pde)
+
+theme_set(theme_minimal(base_family = "Google Sans"))
+```
+
+---
+
+## ข้อมูลเชิงพื้นที่แบบพิกัดจุด (Point Pattern Data)
+
+ในทางระบาดวิทยา ข้อมูลเชิงพื้นที่จำแนกตามลักษณะการเก็บได้เป็น:
+1. **Point pattern data:** ตำแหน่งพิกัดทางภูมิศาสตร์ ($x, y$) ของต้นพืชที่เป็นโรค
+2. **Mapped lattice / Quadrat data:** ข้อมูลจำนวนต้นเป็นโรคหรืออุบัติการณ์ที่บันทึกเป็นตารางกริด (แถวและคอลัมน์)
+
+ในแพ็กเกจ `r4pde` มีชุดข้อมูลจำลองตำแหน่งเชิงพื้นที่ 2 ชุดคือ `SpatialRandom` (การระบาดแบบสุ่ม) และ `SpatialAggregated` (การระบาดแบบเกาะกลุ่ม)
+
+```{r}
+#| label: fig-point-patterns
+#| fig-cap: "เปรียบเทียบแผนที่จุดระหว่างรูปแบบการเกิดโรคแบบสุ่ม (ซ้าย) และแบบเกาะกลุ่ม (ขวา)"
+#| fig-width: 9
+#| fig-height: 4.5
+data("SpatialRandom")
+data("SpatialAggregated")
+
+p_rand <- ggplot(SpatialRandom, aes(x = x, y = y)) +
+  geom_point(color = "steelblue", alpha = 0.7, size = 2) +
+  coord_fixed() +
+  labs(title = "Random Pattern", x = "X coordinate", y = "Y coordinate")
+
+p_agg <- ggplot(SpatialAggregated, aes(x = x, y = y)) +
+  geom_point(color = "firebrick", alpha = 0.7, size = 2) +
+  coord_fixed() +
+  labs(title = "Aggregated Pattern", x = "X coordinate", y = "Y coordinate")
+
+library(gridExtra)
+grid.arrange(p_rand, p_agg, ncol = 2)
+```
+
+จาก @fig-point-patterns จะเห็นความแตกต่างทางสายตาได้อย่างชัดเจน โดยข้อมูลแบบ Aggregated จะเกิดหย่อมการระบาด (clusters / foci) หนาแน่นในบางจุดและเว้นว่างในบริเวณอื่น
+
+---
+
+## การทดสอบ Ordinary Runs Test {#sec-runs-test}
+
+สำหรับข้อมูลต้นพืชที่เป็นโรคตามแนวแถว (transect หรือ row) ที่บันทึกค่าเป็นข้อมูลทวิภาค (binary: $0 =$ ปกติ, $1 =$ เป็นโรค) วิธีการทดสอบการเกาะกลุ่มเชิงพื้นที่ที่ง่ายและคลาสสิกที่สุดคือ **Ordinary Runs Test** (Gibbons 1976; Madden et al. 1982)
+
+### หลักการของ Runs Test
+
+"Run" คือลำดับของพืชที่มีสถานะเดียวกันติดต่อกัน เช่น:
+$$
+0, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0
+$$
+ลำดับนี้มี 5 runs: $(0, 0, 0), (1, 1), (0), (1, 1, 1, 1), (0)$
+
+- หากต้นเป็นโรคเกิดขึ้นแบบสุ่ม จำนวน run สังเกต ($U$) จะเป็นไปตามการแจกแจงปกติที่มีค่าคาดหมาย $E(U)$ และความแปรปรวน $V(U)$
+- หากโรคมีการ **เกาะกลุ่ม (Aggregated)** ต้นเป็นโรคจะอยู่ติดกัน ทำให้จำนวน run สังเกต **น้อยกว่าที่คาดหมาย** ($U < E(U)$)
+- ค่าสถิติมาตรฐาน $Z$ คำนวณได้จาก:
+
+$$
+Z = \frac{U - E(U) + 0.5}{\sqrt{V(U)}}
+$$
+
+เมื่อทดสอบทิศทางเดียว (one-tailed test) เพื่อตรวจการเกาะกลุ่ม:
+- ถ้า $Z < -1.64$ (ที่ระดับนัยสำคัญ $\alpha = 0.05$) หรือ $Z < -2.33$ ($\alpha = 0.01$) แสดงว่าปฏิเสธสมมติฐานหลัก และสรุปได้ว่าโรคมีการ **เกาะกลุ่ม (aggregation)**
+
+### การวิเคราะห์ Runs Test ด้วย `r4pde`
+
+```{r}
+#| label: runs-test-demo
+# ข้อมูลจำลองแถวพืช 30 ต้น: แบบสุ่ม vs แบบเกาะกลุ่ม
+set.seed(42)
+row_random <- rbinom(30, size = 1, prob = 0.3)
+row_clustered <- c(rep(0, 8), rep(1, 7), rep(0, 10), rep(1, 5))
+
+# รัน ordinary runs test
+res_rand <- oruns_test(row_random)
+res_clust <- oruns_test(row_clustered)
+
+tibble(
+  Pattern = c("Simulated Random", "Simulated Clustered"),
+  N_plants = c(length(row_random), length(row_clustered)),
+  Observed_runs = c(res_rand$runs, res_clust$runs),
+  Expected_runs = c(res_rand$mu, res_clust$mu),
+  Z_score = c(res_rand$z, res_clust$z),
+  P_value = c(res_rand$p_value, res_clust$p_value)
+)
+```
+
+ผลการทดสอบแสดงว่า:
+- แถวพืชแบบสุ่มมีค่า $Z = 0.17$ ($p = 0.57$) สอดคล้องกับ Random pattern
+- แถวพืชแบบเกาะกลุ่มมีค่า $Z = -2.90$ ($p = 0.0018 < 0.05$) บ่งชี้การเกาะกลุ่มอย่างมีนัยสำคัญยิ่ง
+
+---
+
+## การวิเคราะห์ข้อมูลตารางกริด (Lattice Data) ด้วย Join Count {#sec-join-count}
+
+เมื่อแปลงพืชถูกสำรวจเป็นตารางกริด 2 มิติ (แถวและคอลัมน์) เราสามารถทดสอบความสัมพันธ์ระหว่างต้นข้างเคียงด้วยวิธี **Join Count Statistics**
+
+ความสัมพันธ์ของพืชติดกันแบ่งเป็น 3 ชนิด:
+- **Black-Black (BB joins):** ต้นเป็นโรคอยู่ติดกับต้นเป็นโรค
+- **White-White (WW joins):** ต้นปกติอยู่ติดกับต้นปกติ
+- **Black-White (BW joins):** ต้นเป็นโรคอยู่ติดกับต้นปกติ
+
+หากโรคมีการเกาะกลุ่ม เราจะพบจำนวน **BB joins สูงกว่าที่คาดหมาย** ($Z_{BB} > 1.64$) และจำนวน BW joins ต่ำกว่าที่คาดหมาย
+
+```{r}
+#| label: join-count-demo
+# สร้างเมทริกซ์แปลงข้าว 10 x 10 ต้น ที่มีหย่อมโรคตรงมุมแปลง
+field_grid <- matrix(0, nrow = 10, ncol = 10)
+field_grid[1:4, 1:4] <- 1
+field_grid[7:9, 7:9] <- 1
+
+# แสดงแผนผังแปลง
+image(1:10, 1:10, field_grid, col = c("white", "black"), 
+      xlab = "Column", ylab = "Row", main = "Rice Field Lattice Map")
+
+# ทดสอบ Join count ด้วย r4pde
+jc_res <- join_count(field_grid)
+jc_res
+```
+
+---
+
+## ดัชนีการเกาะกลุ่มเชิงพื้นที่ (Aggregation Indices) ด้วย `epiphy` {#sec-agg-indices}
+
+สำหรับข้อมูลการนับ (count) หรืออุบัติการณ์ (incidence) ในแปลงย่อย (quadrats) แพ็กเกจ `epiphy` มีฟังก์ชัน `agg_index()` ที่ช่วยคำนวณดัชนีสำคัญ:
+
+1. **Index of Dispersion ($I_D$ หรือ Fisher's index):** อัตราส่วนความแปรปรวนต่อค่าเฉลี่ย ($V/m$)
+   - $I_D = 1$: การกระจายแบบสุ่ม
+   - $I_D > 1$: การเกาะกลุ่ม (Overdispersion)
+2. **Lloyd's Patchiness Index ($I_P$):** วัดความหนาแน่นเฉลี่ยที่สิ่งมีชีวิตสัมผัสร่วมกัน ($I_P > 1$ แสดงการเกาะกลุ่ม)
+3. **Morisita's Index ($I_\delta$):** ดัชนีที่มีความอิสระต่อขนาดตัวอย่าง
+
+เราจะสาธิตกับชุดข้อมูล `citrus_ctv` (Citrus Tristeza Virus) ใน `epiphy` ซึ่งบันทึกตำแหน่งต้นส้มที่เป็นโรค โดยจัดกลุ่มแปลงย่อย (quadrats) ขนาด $3 \times 3$ ต้น ($n = 9$ ต้นต่อแปลงย่อย):
+
+```{r}
+#| label: agg-index-demo
+data("citrus_ctv")
+
+# รวมกลุ่มต้นส้มเป็นแปลงย่อยขนาด 3x3 ต้น (n = 9)
+ctv_quadrats <- citrus_ctv$IVI3and4 |> 
+  filter(t == 1991) |> 
+  mutate(
+    quad_x = ceiling(x / 3),
+    quad_y = ceiling(y / 3)
+  ) |> 
+  group_by(quad_x, quad_y) |> 
+  summarise(
+    diseased = sum(i),
+    total = n(),
+    .groups = "drop"
+  )
+
+# คำนวณดัชนีการเกาะกลุ่มของอุบัติการณ์ (Fisher's index of dispersion)
+agg_fisher <- agg_index(ctv_quadrats$diseased, method = "fisher", flavor = "incidence", n = ctv_quadrats$total)
+agg_fisher
+```
+
+---
+
+## แบบฝึกหัดท้ายบท {#sec-ch4-exercises}
+
+1. **การคำนวณ Ordinary Runs ด้วยมือ:** มีข้อมูลการตรวจโรคใบจุดสีน้ำตาลของข้าวตามแนวคันนา 20 กอ ดังนี้:
+   $$1, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 0, 0, 0$$
+   - จงนับจำนวนต้นเป็นโรค ($N_1$), ต้นปกติ ($N_0$), และจำนวน run สังเกต ($U$)
+   - คำนวณค่าคาดหมาย $E(U)$ และความแปรปรวน $V(U)$
+   - คำนวณค่าสถิติ $Z$ และสรุปผลว่าโรคมีการเกาะกลุ่มหรือไม่ที่ $\alpha = 0.05$
+2. **การเปรียบเทียบ Point Pattern:** ใช้ชุดข้อมูล `SpatialRandom` และ `SpatialAggregated` ใน `r4pde`:
+   - แปลงพิกัดจุดเป็นตารางกริด (quadrat counting) ขนาด $5 \times 5$ ช่อง
+   - เปรียบเทียบค่าเฉลี่ยและความแปรปรวนของจำนวนจุดต่อช่องในแต่ละชุดข้อมูล
+3. **การประยุกต์ใช้ Join Count:** อธิบายว่าเหตุใดการวิเคราะห์ Join count จึงมีประโยชน์ในการประเมินประสิทธิภาพของการเว้นระยะห่างระหว่างกอข้าว หรือการปลูกพืชแซม (intercropping) ต่อการแพร่ระบาดของโรค
+4. **ความแตกต่างระหว่าง $I_D$ และ Morisita's Index:** ในสถานการณ์การสำรวจโรคในแปลงเกษตรกรที่มีความหนาแน่นของต้นพืชไม่เท่ากัน ดัชนีใดใน `epiphy` ที่มีความเหมาะสมในการเปรียบเทียบระดับการเกาะกลุ่มมากกว่า และเพราะเหตุใด
