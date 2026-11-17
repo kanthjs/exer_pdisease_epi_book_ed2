@@ -1,0 +1,250 @@
+# การแสดงภาพ การบรรยาย และการสร้างแบบจำลองเส้นการพัฒนาของโรค {#sec-visualizing-describing-dpc}
+
+<!-- เรียบเรียงจากหัวข้อของ Chapter 3: Visualizing, Describing, and Modeling Disease Progress Curves, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
+     เน้นการวิเคราะห์เส้นการพัฒนาของโรคหลายเส้นพร้อมกัน การคำนวณ AUDPC / AUDPS และการใช้ epifitter -->
+
+## การเตรียมตัว {.unnumbered}
+
+แบบฝึกหัดนี้ต่อยอดจาก @sec-models-of-disease-progress โดยมุ่งเน้นการจัดการข้อมูลการระบาดจากการทดลองจริงที่มีหลายแปลง หลายกรรมวิธี และการสรุปการระบาดตลอดฤดูปลูก ต้องติดตั้งแพ็กเกจ `tidyverse` และ `epifitter` ใน R ก่อนเริ่ม
+
+## บทนำ
+
+ในการทดลองทางโรคพืช ไม่ว่าจะเป็นการประเมินความต้านทานของพันธุ์ข้าวต่อโรคไหม้ (rice blast) หรือการทดสอบประสิทธิภาพของสารป้องกันกำจัดเชื้อราต่อโรคกาบใบแห้ง (sheath blight) นักวิจัยมักบันทึกระดับโรคซ้ำหลายช่วงเวลาจากหลายแปลงย่อย (plots) และหลายการทำซ้ำ (replications)
+
+ความท้าทายสำคัญคือ:
+1. **การแสดงภาพ (Visualizing):** จะพล็อตเส้นการพัฒนาของโรค (disease progress curves; DPCs) จากหลายกรรมวิธีอย่างไรให้เห็นแนวโน้มชัดเจนและไม่สับสน
+2. **การย่อสรุปแบบไม่พึ่งแบบจำลอง (Non-parametric summary):** การใช้พื้นที่ใต้เส้นการพัฒนาของโรค (**AUDPC** และ **AUDPS**) เพื่อสรุปปริมาณโรคตลอดฤดูปลูกเป็นค่าสเกลาร์ตัวเดียว
+3. **การปรับแบบจำลองหลายเส้นพร้อมกัน (Multi-curve modeling):** การใช้ฟังก์ชันขั้นสูง เช่น `fit_multi()` ของแพ็กเกจ `epifitter` เพื่อหาพารามิเตอร์อัตราการระบาด ($r$) แยกตามกรรมวิธีอย่างรวดเร็ว
+
+บทนี้จะพาลงมือปฏิบัติการวิเคราะห์ข้อมูล DPC ตั้งแต่ขั้นตอนการสำรวจด้วยภาพ การคำนวณสถิติสรุป ไปจนถึงการเปรียบเทียบพารามิเตอร์ของแบบจำลอง
+
+```{r}
+#| label: setup
+#| message: false
+#| warning: false
+library(tidyverse)
+library(epifitter)
+
+theme_set(theme_minimal(base_family = "Google Sans"))
+```
+
+---
+
+## ชุดข้อมูลตัวอย่าง: การทดลองโรคราแป้ง
+
+เราจะใช้ชุดข้อมูล `PowderyMildew` ในแพ็กเกจ `epifitter` ซึ่งเป็นการทดลองประเมินความรุนแรงของโรคราแป้ง (severity; สัดส่วน 0 ถึง 1) ตามเวลา (`time` ในหน่วยวัน) โดยมีปัจจัยการทดลอง 2 ปัจจัยคือ:
+1. ระบบการให้น้ำ (`irrigation_type`): Drip vs Overhead
+2. ระดับความชื้น (`moisture`): Low vs High moisture
+3. มีการทำซ้ำ 3 บล็อก (`block`: 1, 2, 3)
+
+```{r}
+#| label: load-data
+data("PowderyMildew")
+head(PowderyMildew)
+```
+
+---
+
+## การแสดงภาพเส้นการพัฒนาของโรค (Visualizing DPCs) {#sec-vis-dpc}
+
+การพล็อตเส้นโค้งการพัฒนาของโรคที่ดีควรแสดงทั้งค่าสังเกตจริง ความผันแปรระหว่างแปลงซ้ำ และแนวโน้มเฉลี่ยของแต่ละกรรมวิธี
+
+### 1. แสดงแปลงซ้ำทั้งหมดแยกตามพาเนล
+
+```{r}
+#| label: fig-pm-all-curves
+#| fig-cap: "เส้นการพัฒนาของโรคราแป้งแยกตามระบบการให้น้ำ ระดับความชื้น และบล็อกการทดลอง"
+#| fig-width: 8
+#| fig-height: 5
+ggplot(PowderyMildew, aes(x = time, y = sev, color = irrigation_type, group = interaction(irrigation_type, moisture, block))) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_line(aes(linetype = moisture), linewidth = 0.8) +
+  facet_grid(moisture ~ irrigation_type) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Time (days)",
+    y = "Disease severity (%)",
+    color = "Irrigation",
+    linetype = "Moisture"
+  )
+```
+
+### 2. แสดงค่าเฉลี่ยและส่วนเบี่ยงเบนมาตรฐานของกรรมวิธี
+
+การรวมค่าเฉลี่ยช่วยให้เปรียบเทียบผลของกรรมวิธีหลักได้ชัดเจนขึ้น:
+
+```{r}
+#| label: fig-pm-mean-curves
+#| fig-cap: "ค่าเฉลี่ยความรุนแรงของโรค (พร้อมส่วนเบี่ยงเบนมาตรฐาน) ตามเวลาของแต่ละกรรมวิธี"
+#| fig-width: 7
+#| fig-height: 4.5
+pm_summary <- PowderyMildew |> 
+  group_by(irrigation_type, moisture, time) |> 
+  summarise(
+    mean_sev = mean(sev),
+    sd_sev = sd(sev),
+    .groups = "drop"
+  )
+
+ggplot(pm_summary, aes(x = time, y = mean_sev, color = irrigation_type, linetype = moisture)) +
+  geom_errorbar(aes(ymin = pmax(0, mean_sev - sd_sev), ymax = mean_sev + sd_sev), 
+                width = 1.5, position = position_dodge(width = 0.8), alpha = 0.5) +
+  geom_line(position = position_dodge(width = 0.8), linewidth = 1) +
+  geom_point(position = position_dodge(width = 0.8), size = 2.5) +
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Time (days)",
+    y = "Mean disease severity (%)",
+    color = "Irrigation",
+    linetype = "Moisture"
+  )
+```
+
+จาก @fig-pm-mean-curves จะเห็นแนวโน้มว่า:
+- ระบบการให้น้ำแบบ Overhead มีความรุนแรงของโรคสูงกว่าแบบ Drip อย่างเห็นได้ชัดในทุกช่วงเวลา
+- สภาพ High moisture เร่งการลุกลามของโรคให้เร็วขึ้นทั้งสองระบบ
+
+---
+
+## การคำนวณ AUDPC และ AUDPS {#sec-audpc-audps}
+
+เมื่อต้องการสรุปปริมาณโรคตลอดช่วงการระบาดเป็นค่าตัวเลขเดียวเพื่อนำไปวิเคราะห์ความแปรปรวน (ANOVA) หรือวิเคราะห์การสูญเสียผลผลิต (yield loss) วิธีที่นิยมที่สุดคือการคำนวณพื้นที่ใต้เส้นการพัฒนาของโรค
+
+### 1. Area Under the Disease Progress Curve (AUDPC)
+
+AUDPC คำนวณโดยใช้กฎสี่เหลี่ยมคางหมู (trapezoidal rule) เชื่อมต่อจุดข้อมูลที่สังเกตได้ตามสมการ:
+
+$$
+\text{AUDPC} = \sum_{i=1}^{n-1} \left( \frac{y_i + y_{i+1}}{2} \right) (t_{i+1} - t_i)
+$$ {#eq-audpc}
+
+เมื่อ:
+- $y_i$ คือระดับโรค ณ เวลาประเมินครั้งที่ $i$
+- $t_i$ คือเวลาประเมินครั้งที่ $i$
+- $n$ คือจำนวนครั้งที่ประเมิน
+
+ในกรณีที่ระยะเวลาการประเมินแต่ละแปลงไม่เท่ากัน นิยมปรับให้เป็น **Standardized AUDPC (sAUDPC)** โดยหารด้วยระยะเวลาทั้งหมด ($t_n - t_1$):
+
+$$
+\text{sAUDPC} = \frac{\text{AUDPC}}{t_n - t_1}
+$$
+
+### 2. Area Under the Disease Progress Stairs (AUDPS)
+
+Simko and Piepho (2012) เสนอ **AUDPS** เพื่อปรับปรุงจุดอ่อนของ AUDPC โดยให้ความสำคัญกับจุดเริ่มต้นและจุดสิ้นสุดของการประเมินอย่างสมดุลยิ่งขึ้น:
+
+$$
+\text{AUDPS} = \text{AUDPC} + \left[ \frac{y_1 + y_n}{2} \right] \left( \frac{t_n - t_1}{n - 1} \right)
+$$ {#eq-audps}
+
+### การคำนวณด้วยฟังก์ชันของ `epifitter`
+
+```{r}
+#| label: calc-audpc
+# คำนวณ AUDPC และ AUDPS แยกตามแต่ละแปลงย่อย (block และ treatment)
+pm_indices <- PowderyMildew |> 
+  group_by(irrigation_type, moisture, block) |> 
+  summarise(
+    audpc = AUDPC(time = time, y = sev, type = "absolute"),
+    raudpc = AUDPC(time = time, y = sev, type = "relative"),
+    audps = AUDPS(time = time, y = sev),
+    .groups = "drop"
+  )
+
+pm_indices
+```
+
+```{r}
+#| label: fig-pm-audpc-box
+#| fig-cap: "การเปรียบเทียบค่า AUDPC ระหว่างระบบการให้น้ำและระดับความชื้น"
+#| fig-width: 6
+#| fig-height: 4
+ggplot(pm_indices, aes(x = irrigation_type, y = audpc, fill = moisture)) +
+  geom_boxplot(alpha = 0.8, outlier.shape = NA) +
+  geom_point(position = position_jitterdodge(jitter.width = 0.1), size = 2) +
+  labs(
+    x = "Irrigation type",
+    y = "AUDPC (proportion x days)",
+    fill = "Moisture"
+  )
+```
+
+---
+
+## การปรับแบบจำลองหลายเส้นด้วย `epifitter::fit_multi` {#sec-multi-fit}
+
+แทนที่จะเขียนลูปปรับแบบจำลองทีละแปลง ฟังก์ชัน `fit_multi()` ของ `epifitter` ช่วยให้เราปรับแบบจำลอง Monomolecular, Exponential, Logistic หรือ Gompertz กับทุกกลุ่มการทดลองได้พร้อมกัน
+
+```{r}
+#| label: multi-fit-demo
+#| warning: false
+# ปรับโมเดลแบบไม่เชิงเส้น (nlin) กับทุก treatment ด้วย fit_multi
+multi_fit <- fit_multi(
+  time_col = "time",
+  intensity_col = "sev",
+  data = PowderyMildew,
+  strata_cols = c("irrigation_type", "moisture"),
+  nlin = TRUE
+)
+
+# ดูตารางพารามิเตอร์ของโมเดล Logistic และ Gompertz
+multi_fit$Parameters |> 
+  filter(model %in% c("Logistic", "Gompertz")) |> 
+  select(irrigation_type, moisture, model, y0, r, CCC, RSE, best_model)
+```
+
+ผลลัพธ์จาก `multi_fit$Parameters` จะแสดงค่าประมาณของ:
+- `y0`: ระดับโรคเริ่มต้น
+- `r`: อัตราการเพิ่มของโรค (apparent infection rate, $r_L$)
+- ค่าสถิติบ่งชี้ความเหมาะสม เช่น $R^2$, CCC และ RMSE สำหรับแต่ละกรรมวิธี
+
+เราสามารถนำค่าประมาณพารามิเตอร์ $y_0$ และ $r_L$ จากแบบจำลอง Logistic ของแต่ละกรรมวิธีมาสร้างเส้นโค้งทำนายเพื่อเปรียบเทียบกับจุดข้อมูลจริง:
+
+```{r}
+#| label: fig-multi-fit-curves
+#| fig-cap: "เส้นโค้งแบบจำลอง Logistic ที่ปรับเข้ากับแต่ละกรรมวิธีจากการทดลอง"
+#| fig-width: 8
+#| fig-height: 5
+pars_logi <- multi_fit$Parameters |> 
+  filter(model == "Logistic") |> 
+  select(irrigation_type, moisture, y0, r)
+
+# สร้าง grid เวลาและคำนวณ y ทำนาย
+pred_grid <- expand_grid(
+  pars_logi,
+  time = seq(0, 60, by = 1)
+) |> 
+  mutate(pred_y = 1 / (1 + ((1 - y0) / y0) * exp(-r * time)))
+
+ggplot(PowderyMildew, aes(x = time, y = sev)) +
+  geom_point(alpha = 0.5, size = 1.8, color = "grey30") +
+  geom_line(data = pred_grid, aes(x = time, y = pred_y, color = irrigation_type, linetype = moisture), linewidth = 1) +
+  facet_grid(moisture ~ irrigation_type) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, 1)) +
+  labs(
+    title = "Fitted Logistic Curves across Treatments",
+    x = "Time (days)",
+    y = "Disease severity (%)",
+    color = "Irrigation",
+    linetype = "Moisture"
+  )
+```
+
+---
+
+## แบบฝึกหัดท้ายบท {#sec-ch3-exercises}
+
+1. **การคำนวณ AUDPC ด้วยมือ:** ข้อมูลความรุนแรงของโรคไหม้ข้าวในแปลงทดลองประเมินทุก 7 วัน ได้แก่:
+   - วันที่ 0: $y = 0.01$
+   - วันที่ 7: $y = 0.04$
+   - วันที่ 14: $y = 0.15$
+   - วันที่ 21: $y = 0.45$
+   - วันที่ 28: $y = 0.80$
+   จงใช้สมการที่ @eq-audpc คำนวณหาค่า AUDPC และคำนวณค่า sAUDPC พร้อมระบุหน่วยของทั้งสองค่า
+2. **การเปรียบเทียบ AUDPC กับ AUDPS:** อธิบายความแตกต่างในเชิงแนวคิดระหว่าง AUDPC และ AUDPS และในสถานการณ์ใดที่ AUDPS ให้ผลการเปรียบเทียบที่เชื่อถือได้ดีกว่า
+3. **การฟิตโมเดลเปรียบเทียบ Gompertz กับ Logistic:**
+   - ใช้ฟังก์ชัน `fit_multi()` กับชุดข้อมูล `PowderyMildew` อีกครั้ง โดยเปลี่ยนแบบจำลองเป็น `model = "gompertz"`
+   - เปรียบเทียบค่า CCC และ RMSE เฉลี่ยระหว่าง Logistic และ Gompertz ในชุดข้อมูลนี้ แบบจำลองใดให้ผลลัพธ์ที่ดีกว่า
+4. **การวิเคราะห์ผลทางสถิติ:** นำค่า `audpc` ที่ได้จากตาราง `pm_indices` ไปทดสอบการวิเคราะห์ความแปรปรวน (Two-way ANOVA) ใน R ด้วยฟังก์ชัน `aov()` หรือ `lm()`:
+   - ปัจจัย `irrigation_type` และ `moisture` มีผลต่อ AUDPC อย่างมีนัยสำคัญทางสถิติหรือไม่
+   - มีปฏิสัมพันธ์ (interaction) ระหว่างสองปัจจัยหรือไม่

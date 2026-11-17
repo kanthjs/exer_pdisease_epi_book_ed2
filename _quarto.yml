@@ -23,6 +23,7 @@ book:
     - 00-preface.qmd
     - 01-key-distributions.qmd
     - 02-models-of-disease-progress.qmd
+    - 03-visualizing-describing-dpc.qmd
     - references.qmd
   appendices:
     - appendix-glossary.qmd
