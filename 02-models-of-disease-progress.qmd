@@ -1,4 +1,4 @@
-# แบบจำลองการพัฒนาของโรคด้วย R {#sec-models-of-disease-progress}
+# Models of Disease Progress with R {#sec-models-of-disease-progress}
 
 <!-- เรียบเรียงจากหัวข้อของ Garrett, Esker & Sparks, Chapter 2: Models of Disease Progress, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
      เนื้อหาและโค้ดเขียนใหม่ ไม่ได้แปลตรงตัว เน้นบริบทโรคข้าวและการวิเคราะห์ด้วย R -->

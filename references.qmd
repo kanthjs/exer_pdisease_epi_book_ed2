@@ -1,4 +1,4 @@
-# เอกสารอ้างอิง {.unnumbered}
+# References {.unnumbered}
 
 ::: {#refs}
 :::

@@ -1,4 +1,4 @@
-# การแสดงภาพ การบรรยาย และการสร้างแบบจำลองเส้นการพัฒนาของโรค {#sec-visualizing-describing-dpc}
+# Visualizing, Describing, and Modeling Disease Progress Curves {#sec-visualizing-describing-dpc}
 
 <!-- เรียบเรียงจากหัวข้อของ Chapter 3: Visualizing, Describing, and Modeling Disease Progress Curves, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
      เน้นการวิเคราะห์เส้นการพัฒนาของโรคหลายเส้นพร้อมกัน การคำนวณ AUDPC / AUDPS และการใช้ epifitter -->

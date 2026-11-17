@@ -1,4 +1,4 @@
-# การวิเคราะห์รูปแบบเชิงพื้นที่ของโรคพืช {#sec-spatial-patterns}
+# Analysis of Spatial Pattern {#sec-spatial-patterns}
 
 <!-- เรียบเรียงจากหัวข้อของ Chapter 4: Analysis of Spatial Pattern, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
      เน้นการวิเคราะห์ spatial pattern ของโรคพืช (Random vs Aggregated) ด้วย R ผ่าน epiphy และ r4pde -->

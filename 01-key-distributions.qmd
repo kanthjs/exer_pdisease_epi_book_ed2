@@ -1,4 +1,4 @@
-# การแจกแจงและแบบจำลองหลักในระบาดวิทยาด้วย R {#sec-key-distributions}
+# Key Distributions and Models in Epidemiology with R {#sec-key-distributions}
 
 <!-- เรียบเรียงจากหัวข้อของ Garrett, Esker & Sparks, Chapter 1, Exercises in Plant Disease Epidemiology 2nd ed. (APS, 2015)
      เนื้อหาและโค้ดเขียนใหม่ ไม่ได้แปลตรงตัว -->

@@ -1,4 +1,4 @@
-# รูปแบบ การแจกแจง และการสุ่มตัวอย่างโรคพืช {#sec-patterns-distributions-sampling}
+# Patterns, Distributions, and Sampling {#sec-patterns-distributions-sampling}
 
 <!-- เรียบเรียงจากหัวข้อของ Chapter 5: Patterns, Distributions, and Sampling, Exercises in Plant Disease Epidemiology 2nd ed. (APS)
      เน้นการวิเคราะห์การแจกแจงเชิงพื้นที่ (Binomial vs Beta-Binomial), Taylor's / Binary Power Law และการวางแผนสุ่มตัวอย่าง -->
