@@ -101,6 +101,14 @@ p_gof_agg <- distr_fit$gof$aggregated$p.value
 
 ผลสองชุดนี้ชี้ไปคนละทาง goodness of fit ปฏิเสธ binomial ($p = `r signif(p_gof_rand, 2)`$) แต่ไม่ปฏิเสธ beta-binomial ($p = `r signif(p_gof_agg, 2)`$) ขณะที่ likelihood ratio test ไม่พบว่า beta-binomial ดีกว่า binomial อย่างมีนัยสำคัญ ($p = `r signif(p_llr, 2)`$) คำเตือน "Chi-squared approximation may be incorrect" ที่ขึ้นตอนฟิตบอกว่าบางคลาสมีความถี่คาดหมายต่ำ (ราวต่ำกว่า 5) ค่า p ของ goodness of fit จึงเชื่อได้น้อย ข้อสรุปที่ระมัดระวังสำหรับข้อมูลชุดนี้คือ มีสัญญาณของการเกาะกลุ่มเล็กน้อย แต่ด้วยหน่วยตัวอย่างขนาด $n = 4$ ต้น หลักฐานยังไม่หนักแน่นพอจะยืนยัน ถ้าใช้หน่วยตัวอย่างใหญ่ขึ้น (เช่น $3 \times 3$ ต้น) หรือใช้ข้อมูลปีที่อุบัติการณ์สูงกว่า ผลอาจชัดขึ้น ซึ่งผู้อ่านลองได้เอง
 
+::: {.callout-note}
+### overdispersion กับการเปรียบเทียบกรรมวิธีด้วย GLM
+
+เมื่อต้องการเปรียบเทียบอุบัติการณ์ระหว่างกรรมวิธี (เช่น พันธุ์หรือสารป้องกันกำจัด) เรามักใช้ GLM แบบ binomial (`glm(cbind(i, n - i) ~ treatment, family = binomial)`) ซึ่งสมมติว่าความแปรปรวนระหว่างหน่วยตัวอย่างเป็นไปตาม binomial ถ้าโรคเกาะกลุ่ม ความแปรปรวนจริงจะสูงกว่านั้นตามตัวคูณ $1 + (n-1)\rho$ แต่แบบจำลองไม่รู้ ผลคือ standard error ของผลต่างระหว่างกรรมวิธีต่ำเกินจริงและค่า p เล็กเกินไป เราจึงสรุปว่ากรรมวิธีต่างกันบ่อยกว่าที่ควร
+
+วิธีแก้ที่ใช้ใน R มีสองทาง ทางแรกคือ `family = quasibinomial` ซึ่งประมาณตัวคูณความแปรปรวน (dispersion parameter) จากข้อมูลแล้วขยาย standard error ตาม ทางที่สองคือใช้ beta-binomial regression โดยตรง เช่น ฟังก์ชัน `glmmTMB()` ใน `glmmTMB` ที่ `family = betabinomial` วิธีตรวจเบื้องต้นว่ามีปัญหาหรือไม่ คือหาร residual deviance ด้วย residual degrees of freedom ถ้าได้ค่ามากกว่า 1 ชัดเจน แสดงว่ามี overdispersion
+:::
+
 ```{r}
 #| label: fig-distr-plot
 #| fig-cap: "เปรียบเทียบความถี่สังเกตจริงกับค่าคาดหมายจาก Binomial และ Beta-Binomial distribution"
