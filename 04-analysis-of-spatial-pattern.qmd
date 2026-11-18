@@ -93,6 +93,15 @@ $$
 Z = \frac{U - E(U) + 0.5}{\sqrt{V(U)}}
 $$
 
+โดยให้ $N$ คือจำนวนต้นทั้งหมดในแถว และ $m$ คือจำนวนต้นเป็นโรค ค่าคาดหมายและความแปรปรวนของจำนวน run ภายใต้สมมติฐานว่าโรคเกิดแบบสุ่ม คือ
+
+$$
+E(U) = 1 + \frac{2m(N - m)}{N}, \qquad
+V(U) = \frac{2m(N - m)\left[2m(N - m) - N\right]}{N^2 (N - 1)}
+$$ {#eq-runs-moments}
+
+ค่า $+0.5$ ใน $Z$ คือ continuity correction เพราะ $U$ เป็นจำนวนเต็มแต่ประมาณด้วย normal distribution ซึ่งต่อเนื่อง ตัวอย่างเช่น แถวข้างบนมี $N = 11$, $m = 6$ จะได้ $E(U) = 1 + 2(6)(5)/11 \approx 6.45$ เทียบกับ $U = 5$ ที่สังเกตได้
+
 เมื่อทดสอบทิศทางเดียว (one-tailed test) เพื่อตรวจการเกาะกลุ่ม:
 - ถ้า $Z < -1.64$ (ที่ระดับนัยสำคัญ $\alpha = 0.05$) หรือ $Z < -2.33$ ($\alpha = 0.01$) แสดงว่าปฏิเสธสมมติฐานหลัก และสรุปได้ว่าโรคมีการ **เกาะกลุ่ม (aggregation)**
 
@@ -192,6 +201,150 @@ agg_fisher
 
 ---
 
+ค่า 1.171 มากกว่า 1 แต่จะต่างจาก 1 อย่างมีนัยสำคัญหรือไม่ต้องทดสอบ ภายใต้สมมติฐานว่าโรคเกิดแบบสุ่ม ค่า $(N_q - 1)\,I_D$ มี chi-square distribution ที่ degrees of freedom เท่ากับ $N_q - 1$ เมื่อ $N_q$ คือจำนวน quadrat ใน `epiphy` ใช้ `chisq.test()` กับผลของ `agg_index()` ได้โดยตรง
+
+```{r}
+#| label: agg-index-test
+chisq.test(agg_fisher)
+```
+
+ได้ $p = `r signif(chisq.test(agg_fisher)$p.value, 2)`$ จึงไม่มีหลักฐานว่าต้นส้มที่เป็นโรคในปี 1991 เกาะกลุ่มที่ระดับ quadrat ขนาด $3 	imes 3$ ต้น ค่า $I_D$ ที่มากกว่า 1 เล็กน้อยอยู่ในช่วงที่เกิดได้โดยบังเอิญภายใต้รูปแบบสุ่ม ตัวอย่างนี้ย้ำว่าต้องทดสอบนัยสำคัญทุกครั้ง ไม่ควรสรุปจากค่าดัชนีที่ได้อย่างเดียว
+
+---
+
+## ข้อมูล count: Poisson เทียบกับ negative binomial {#sec-count-data}
+
+หัวข้อก่อนหน้าใช้ข้อมูล incidence (จำนวนต้นเป็นโรคจาก $n$ ต้น) แต่ข้อมูลโรคพืชจำนวนมากเป็น count ที่ไม่มีขีดบนต่อหน่วยตัวอย่าง เช่น จำนวนแผลต่อใบ จำนวนต้นเป็นโรคต่อพื้นที่หนึ่งตารางเมตรเมื่อต้นขึ้นหนาแน่น หรือจำนวนสปอร์ที่ดักได้ ข้อมูลกลุ่มนี้ใช้ Poisson distribution เป็นแบบจำลองของรูปแบบสุ่ม (@sec-poisson) และใช้ **negative binomial distribution** เป็นแบบจำลองของรูปแบบเกาะกลุ่ม
+
+negative binomial มีพารามิเตอร์สองตัว คือค่าเฉลี่ย $\mu$ และ $k$ ซึ่งวัดระดับการเกาะกลุ่ม ความแปรปรวนคือ
+
+$$
+\sigma^2 = \mu + \frac{\mu^2}{k}
+$$ {#eq-nb-var}
+
+$k$ ยิ่งเล็ก ความแปรปรวนยิ่งสูงกว่าค่าเฉลี่ย คือเกาะกลุ่มมาก เมื่อ $k \to \infty$ พจน์ $\mu^2/k$ หายไป negative binomial จึงเข้าใกล้ Poisson รายละเอียดของ $k$ อยู่ใน @sec-patterns-distributions-sampling
+
+::: {.callout-warning}
+### ใช้ Poisson และ negative binomial กับข้อมูล incidence ไม่ได้
+สองการแจกแจงนี้สมมติว่า count ต่อหน่วยไม่มีขีดบน ข้อมูล incidence มีขีดบนเท่ากับจำนวนต้นในหน่วย ($n$) จึงต้องใช้ binomial และ beta-binomial แทน (@tbl-spatial-types) ข้อยกเว้นในทางปฏิบัติคือเมื่อสัดส่วนโรคต่ำมาก (ราวไม่เกิน 15%) ซึ่งขีดบนแทบไม่มีผล การใช้ Poisson หรือ negative binomial จึงพอประมาณได้ แต่ถ้าโรคสูงกว่านั้นจะได้ข้อสรุปที่คลาดเคลื่อน
+:::
+
+### จำลองแปลงและนับใน quadrat
+
+ต้นฉบับของบทนี้ให้นักศึกษาโปรยเมล็ดข้าวลงบนกระดาษกริด เพื่อสร้างรูปแบบเชิงพื้นที่ด้วยมือแล้วนับจำนวนเมล็ดในแต่ละช่อง ใน R เราจำลองแบบเดียวกันได้ ตัวอย่างข้างล่างวางต้นเป็นโรค 200 จุดในแปลงขนาด 70 × 50 m สองแบบ แบบแรกวางสุ่มอิสระ แบบที่สองวางเป็นกลุ่มรอบจุดศูนย์กลาง 15 จุด (คล้ายการแพร่ระยะใกล้จาก focus) แล้วนับจำนวนจุดใน quadrat ขนาด 10 × 10 m ซึ่งได้ 35 quadrat (@fig-sim-quadrats)
+
+```{r}
+#| label: sim-quadrat-data
+set.seed(2026)
+field_w <- 70; field_h <- 50; n_pts <- 200
+
+# random pattern: independent uniform locations
+pts_random <- tibble(x = runif(n_pts, 0, field_w), y = runif(n_pts, 0, field_h))
+
+# aggregated pattern: points scattered around 15 foci (hypothetical)
+foci <- tibble(fx = runif(15, 0, field_w), fy = runif(15, 0, field_h))
+pts_agg <- foci |>
+  slice_sample(n = n_pts, replace = TRUE) |>
+  mutate(x = pmin(pmax(fx + rnorm(n(), 0, 3), 0), field_w - 1e-6),
+         y = pmin(pmax(fy + rnorm(n(), 0, 3), 0), field_h - 1e-6)) |>
+  select(x, y)
+
+# count points per 10 m x 10 m quadrat (7 x 5 = 35 quadrats)
+count_quadrats <- function(pts, size = 10) {
+  pts |>
+    mutate(qx = floor(x / size) + 1, qy = floor(y / size) + 1) |>
+    dplyr::count(qx, qy, name = "i") |>
+    right_join(expand_grid(qx = 1:ceiling(field_w / size), qy = 1:ceiling(field_h / size)),
+               by = c("qx", "qy")) |>
+    mutate(i = replace_na(i, 0L)) |>
+    rename(x = qx, y = qy)
+}
+q_random <- count_quadrats(pts_random)
+q_agg    <- count_quadrats(pts_agg)
+```
+
+```{r}
+#| label: fig-sim-quadrats
+#| fig-cap: "Simulated diseased plants (points) with 10 m × 10 m quadrats (grid lines) for a random pattern (left) and an aggregated pattern around 15 foci (right). Hypothetical data."
+#| fig-width: 9
+#| fig-height: 3.8
+bind_rows(pts_random |> mutate(Pattern = "Random"),
+          pts_agg |> mutate(Pattern = "Aggregated")) |>
+  mutate(Pattern = factor(Pattern, levels = c("Random", "Aggregated"))) |>
+  ggplot(aes(x, y)) +
+  geom_vline(xintercept = seq(0, field_w, 10), colour = "grey80") +
+  geom_hline(yintercept = seq(0, field_h, 10), colour = "grey80") +
+  geom_point(size = 1, aes(shape = Pattern)) +
+  facet_wrap(~ Pattern) +
+  coord_fixed() +
+  labs(x = "x (m)", y = "y (m)") +
+  theme(legend.position = "none")
+```
+
+ค่าเฉลี่ยของทั้งสองแปลงเท่ากัน (200/35 ≈ 5.7 ต้นต่อ quadrat) เพราะจำนวนจุดเท่ากัน แต่ความแปรปรวนต่างกันมาก ทดสอบด้วย index of dispersion เวอร์ชันสำหรับ count และ chi-square test
+
+```{r}
+#| label: sim-dispersion
+cnt_random <- epiphy::count(q_random, mapping(x = x, y = y, i = i))
+cnt_agg    <- epiphy::count(q_agg,    mapping(x = x, y = y, i = i))
+
+tibble(
+  Pattern  = c("Random", "Aggregated"),
+  mean     = c(mean(q_random$i), mean(q_agg$i)),
+  variance = c(var(q_random$i), var(q_agg$i)),
+  D        = c(agg_index(cnt_random)$index, agg_index(cnt_agg)$index),
+  p_value  = c(chisq.test(agg_index(cnt_random))$p.value,
+               chisq.test(agg_index(cnt_agg))$p.value)
+)
+```
+
+### fit Poisson และ negative binomial
+
+วิธีที่สองคือเทียบความถี่ของ count ที่สังเกตได้กับความถี่ที่คาดหมายจากสองการแจกแจง ฟังก์ชัน `fit_two_distr()` ที่ใช้กับ incidence ใน @sec-patterns-distributions-sampling ใช้กับข้อมูล count ได้เช่นกัน โดยจะ fit Poisson (random) และ negative binomial (aggregated)
+
+```{r}
+#| label: sim-fit-two
+fit_cnt_agg <- fit_two_distr(cnt_agg)
+fit_cnt_agg$param
+fit_cnt_agg$llr
+```
+
+```{r}
+#| label: fig-sim-fit-two
+#| fig-cap: "Observed frequencies of counts per quadrat in the simulated aggregated field compared with frequencies expected from the Poisson and negative binomial distributions. Hypothetical data."
+#| fig-width: 7
+#| fig-height: 4
+plot(fit_cnt_agg)
+```
+
+likelihood ratio test บอกว่า negative binomial อธิบายข้อมูลได้ดีกว่า Poisson หรือไม่ ส่วนค่า $k$ ที่ประมาณได้ใช้บอกระดับการเกาะกลุ่ม ผู้อ่านควรลองกับ `cnt_random` ด้วย ซึ่งควรได้ $k$ สูงมาก (ใกล้ Poisson) และ likelihood ratio test ไม่มีนัยสำคัญ
+
+### ขนาด quadrat มีผลต่อข้อสรุป
+
+ค่าดัชนีการเกาะกลุ่มไม่ใช่สมบัติของแปลงเพียงอย่างเดียว แต่ขึ้นกับขนาดของ quadrat ด้วย ถ้า quadrat เล็กกว่ากลุ่มของต้นเป็นโรคมาก แต่ละ quadrat จะเห็นเพียงบางส่วนของกลุ่ม ถ้า quadrat ใหญ่กว่ากลุ่มมาก ความแตกต่างระหว่าง quadrat จะถูกเฉลี่ยหายไป
+
+```{r}
+#| label: fig-quadrat-size
+#| fig-cap: "Index of dispersion (D) of the simulated aggregated and random fields counted with square quadrats of different sizes. The dashed line marks D = 1 (random). Hypothetical data."
+#| fig-width: 7
+#| fig-height: 4
+quadrat_D <- function(pts, size) {
+  q <- count_quadrats(pts, size)
+  var(q$i) / mean(q$i)
+}
+expand_grid(size = c(2.5, 5, 10, 25), Pattern = c("Random", "Aggregated")) |>
+  mutate(D = map2_dbl(size, Pattern, \(s, p)
+    quadrat_D(if (p == "Random") pts_random else pts_agg, s))) |>
+  ggplot(aes(size, D, linetype = Pattern, shape = Pattern)) +
+  geom_hline(yintercept = 1, linetype = "dashed", colour = "grey50") +
+  geom_line() + geom_point(size = 2.5) +
+  labs(x = "Quadrat side length (m)", y = "Index of dispersion (D)")
+```
+
+ในแปลงจำลองนี้ $D$ ของแปลงเกาะกลุ่มเพิ่มขึ้นตามขนาด quadrat ส่วนแปลงสุ่มอยู่ใกล้ 1 ยกเว้นที่ quadrat ใหญ่สุดซึ่งเหลือเพียง 6 หน่วย ทำให้ค่าประมาณแกว่งมาก ข้อสรุปเชิงปฏิบัติคือ เวลารายงานหรือเปรียบเทียบดัชนีการเกาะกลุ่ม ต้องบอกขนาดของหน่วยตัวอย่างเสมอ และเปรียบเทียบได้เฉพาะเมื่อใช้หน่วยขนาดเดียวกัน
+
+---
+
 ## แบบฝึกหัดท้ายบท {#sec-ch4-exercises}
 
 1. **การคำนวณ Ordinary Runs ด้วยมือ:** มีข้อมูลการตรวจโรคใบจุดสีน้ำตาลของข้าวตามแนวคันนา 20 กอ ดังนี้:
@@ -204,3 +357,7 @@ agg_fisher
    - เปรียบเทียบค่าเฉลี่ยและความแปรปรวนของจำนวนจุดต่อช่องในแต่ละชุดข้อมูล
 3. **การประยุกต์ใช้ Join Count:** อธิบายว่าเหตุใดการวิเคราะห์ Join count จึงมีประโยชน์ในการประเมินประสิทธิภาพของการเว้นระยะห่างระหว่างกอข้าว หรือการปลูกพืชแซม (intercropping) ต่อการแพร่ระบาดของโรค
 4. **ความแตกต่างระหว่าง $I_D$ และ Morisita's Index:** ในสถานการณ์การสำรวจโรคในแปลงเกษตรกรที่มีความหนาแน่นของต้นพืชไม่เท่ากัน ดัชนีใดใน `epiphy` ที่มีความเหมาะสมในการเปรียบเทียบระดับการเกาะกลุ่มมากกว่า และเพราะเหตุใด
+5. **Index of dispersion ด้วยมือ:** ใช้ข้อมูล `q_agg` ใน @sec-count-data คำนวณ $D = s^2/\bar{x}$ และค่า $(N_q - 1)D$ ด้วยมือ (ใช้ R ช่วยคำนวณ $\bar{x}$ และ $s^2$ ได้) แล้วหาค่า p จาก `pchisq()` เทียบกับผลของ `chisq.test()`
+6. **Poisson หรือ negative binomial:** ใช้ `fit_two_distr()` กับ `cnt_random` และอธิบายผล likelihood ratio test กับค่า $k$ ที่ได้ เทียบกับ `cnt_agg`
+7. **จำลองแปลงเอง:** เปลี่ยนจำนวน focus ใน chunk `sim-quadrat-data` จาก 15 เป็น 5 และ 50 (คงจำนวนต้นเป็นโรค 200 ต้น) ค่า $D$ และ $k$ เปลี่ยนไปอย่างไร และผลนี้สอดคล้องกับชีววิทยาของการแพร่ระบาดจาก focus อย่างไร
+8. **ขนาด quadrat:** จาก @fig-quadrat-size อธิบายว่าทำไมแปลงเกาะกลุ่มจึงได้ค่า $D$ ต่างกันตามขนาด quadrat และทำไมแปลงสุ่มได้ค่าใกล้ 1 ที่ quadrat ขนาด 2.5–10 m แต่เบี่ยงไปที่ 25 m (แนะ: ที่ 25 m มี quadrat เพียง 6 หน่วย)

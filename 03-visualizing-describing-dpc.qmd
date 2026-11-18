@@ -180,6 +180,100 @@ ggplot(pm_indices, aes(x = irrigation_type, y = audpc, fill = moisture)) +
 
 ---
 
+## การเลือกแบบจำลองที่เหมาะสม (model selection) {#sec-model-selection}
+
+ก่อนนำ $y_0$ และ $r$ ไปเปรียบเทียบระหว่างกรรมวิธี ต้องแน่ใจก่อนว่าแบบจำลองที่เลือกบรรยายรูปร่างของเส้นการพัฒนาของโรคได้จริง ถ้าเลือกผิด ค่า $r$ จะไม่มีความหมายทางชีววิทยา ไม่ว่า $R^2$ จะสูงเพียงใด
+
+### ข้อมูลต้องมีอย่างน้อยห้าครั้ง
+
+การประเมินโรคต้องมีอย่างน้อย 5 ครั้งที่ระดับโรคอยู่ระหว่าง 0 ถึง 100% (ไม่นับครั้งที่ยังไม่พบโรคหรือโรคเต็มแล้ว) จึงจะเห็นรูปร่างของเส้นโค้งพอจะเลือกแบบจำลองได้ ถ้ามีเพียง 3 จุด เส้นตรงก็ผ่านได้เกือบพอดีในทุกสเกลที่แปลงรูป จุดที่ $y = 0$ หรือ $y = 1$ ใช้ไม่ได้ในสเกลแปลงรูปส่วนใหญ่ (@sec-linearization) ข้อนี้จึงควรคิดตั้งแต่ตอนวางแผนว่าจะประเมินโรคบ่อยเพียงใด
+
+### linear model เป็นจุดเริ่มต้น
+
+นอกจากแบบจำลองสี่แบบใน @sec-models-of-disease-progress ควรลอง linear model $y = y_0 + r t$ ด้วย ซึ่งสมมติว่าโรคเพิ่มขึ้นในอัตราคงที่ ($dy/dt = r$) ไม่ขึ้นกับปริมาณโรคหรือเนื้อเยื่อที่เหลือ เป็นแบบจำลองที่ง่ายที่สุด ถ้าแบบจำลองที่ซับซ้อนกว่าอธิบายข้อมูลได้ไม่ดีกว่า linear model ก็ไม่มีเหตุผลจะใช้
+
+### สัญกรณ์ $y_0^*$ และ $r^*$
+
+เมื่อปรับแบบจำลองบนสเกลที่แปลงรูปแล้ว intercept และความชันของเส้นตรงไม่ใช่ $y_0$ และ $r$ ในหน่วยของโรคโดยตรง บทนี้ใช้เครื่องหมายดอกจันกำกับค่าบนสเกลแปลงรูป เช่น ใน logistic model ได้ $y_0^* = \ln[y_0/(1-y_0)]$ ถ้า $y_0^* = -4$ ระดับโรคเริ่มต้นจริงคือ $y_0 = 1/(1 + e^{4}) \approx 0.018$ ไม่ใช่ $-4$ นักศึกษามักพลาดตรงนี้เวลาอ่าน output ของ `lm()` หรือ `fit_lin()` คอลัมน์ `Linearized` ใน output ของ `fit_lin()` คือ $y_0^*$ ส่วนคอลัมน์ `Estimate` คือ $y_0$ ที่แปลงกลับแล้ว
+
+### ดู residual ไม่ใช่ดูแค่ $R^2$
+
+residual คือผลต่างระหว่างค่าสังเกตกับค่าที่แบบจำลองทำนาย ($y - \hat{y}$) ถ้าแบบจำลองเหมาะสม residual ควรกระจายแบบสุ่มรอบศูนย์ตลอดช่วงเวลา ถ้า residual เรียงเป็นรูปแบบ เช่น เป็นบวกช่วงต้น ลบช่วงกลาง แล้วบวกอีกช่วงปลาย (รูปตัว U) หรือกลับกัน แปลว่าแบบจำลองมีรูปร่างไม่ตรงกับข้อมูลอย่างเป็นระบบ แม้ $R^2$ จะสูงก็ตาม
+
+ตัวอย่างข้างล่างใช้แปลง Drip, High moisture, block 1 ชุดเดียวกับ @sec-fitting-example ปรับทั้งห้าแบบจำลอง แล้วพล็อต residual บนสเกลเดิมเทียบกับเวลา (@fig-residuals)
+
+```{r}
+#| label: fit-five-models
+pm_one <- PowderyMildew |>
+  filter(irrigation_type == "Drip", moisture == "High moisture", block == 1)
+
+# four population models on the linearized scale (epifitter)
+fit_four <- fit_lin(time = pm_one$time, y = pm_one$sev)
+
+# linear model on the original scale (base R)
+fit_linear <- lm(sev ~ time, data = pm_one)
+
+res_all <- bind_rows(
+  fit_four$data |> select(time, model, residual),
+  tibble(time = pm_one$time, model = "Linear", residual = residuals(fit_linear))
+) |>
+  mutate(model = factor(model, levels = c("Linear", "Exponential", "Monomolecular",
+                                          "Logistic", "Gompertz")))
+```
+
+```{r}
+#| label: fig-residuals
+#| fig-cap: "Residuals (observed minus predicted, original scale) against time for five models fitted to one powdery mildew epidemic (Drip, high moisture, block 1). A good model leaves residuals scattered randomly around zero."
+#| fig-width: 9
+#| fig-height: 3.5
+ggplot(res_all, aes(time, residual)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_point(size = 2) +
+  geom_line(alpha = 0.4) +
+  facet_wrap(~ model, nrow = 1) +
+  labs(x = "Time (days)", y = "Residual")
+```
+
+```{r}
+#| label: tbl-model-compare
+#| tbl-cap: "Fit statistics for the five models. R² for the four population models is computed on each model's linearized scale, so it is not directly comparable across models; RMSE is on the original scale for all five."
+rmse <- function(r) sqrt(mean(r^2))
+res_all |>
+  group_by(model) |>
+  summarise(RMSE = rmse(residual), .groups = "drop") |>
+  left_join(
+    bind_rows(
+      tibble(model = as.character(rownames(fit_four$Stats)), R2 = fit_four$Stats[, "r_squared"]),
+      tibble(model = "Linear", R2 = summary(fit_linear)$r.squared)
+    ),
+    by = "model"
+  ) |>
+  arrange(RMSE) |>
+  knitr::kable(digits = 3)
+```
+
+อ่าน @fig-residuals ควบคู่กับ @tbl-model-compare ทุกครั้ง แบบจำลองที่ residual ไม่มีรูปแบบและ RMSE ต่ำคือตัวเลือกที่ดี ในข้อมูลชุดนี้ exponential และ logistic model มี residual เป็นรูปแบบชัดเจน คือบวกช่วงกลางการระบาดและติดลบที่ปลาย โดยเฉพาะ exponential model ที่ทำนายสูงเกินจริงมากในสองวันประเมินสุดท้าย เพราะเพิ่มขึ้นได้ไม่มีขีดจำกัด ส่วน Gompertz model และ linear model มี residual กระจายรอบศูนย์และ RMSE ต่ำสุดใกล้กัน
+
+ผลที่ linear model ทำได้ดีไม่ได้แปลว่าโรคราแป้งเพิ่มแบบเส้นตรงโดยธรรมชาติ ข้อมูลชุดนี้เริ่มที่ราว 1% และจบที่ราว 43% จึงครอบคลุมเฉพาะช่วงกลางของเส้นรูปตัว S ซึ่งค่อนข้างตรง ถ้าใช้ linear model ทำนายต่อไปข้างหน้า ระดับโรคจะเกิน 100% ในที่สุด ซึ่งเป็นไปไม่ได้ การเลือกแบบจำลองจึงต้องดูทั้งสถิติ รูปแบบของ residual และความสมเหตุสมผลทางชีววิทยาไปพร้อมกัน ในกรณีนี้ Gompertz model เป็นตัวเลือกที่ดีกว่า เพราะ fit ได้ดีพอ ๆ กันและยังมีขีดจำกัดบน
+
+เมื่อจุดข้อมูลมีน้อย การดูด้วยตาอาจตัดสินยาก เราทดสอบได้ว่าเครื่องหมายของ residual (บวกหรือลบ) เรียงต่อกันเป็นกลุ่มมากกว่าที่ควรเป็นโดยบังเอิญหรือไม่ ด้วย ordinary runs test ซึ่งจะพบอีกครั้งใน @sec-runs-test
+
+```{r}
+#| label: residual-runs
+res_all |>
+  group_by(model) |>
+  summarise(
+    n_positive = sum(residual > 0),
+    n_negative = sum(residual < 0),
+    runs = sum(diff(sign(residual[order(time)])) != 0) + 1,
+    .groups = "drop"
+  )
+```
+
+จำนวน runs ที่น้อยเมื่อเทียบกับจำนวนจุด (เช่น 2–3 runs จาก 10 จุด) บ่งว่า residual เรียงเป็นรูปแบบ แบบจำลองนั้นมีรูปร่างไม่ตรงกับข้อมูล
+
+---
+
 ## การปรับแบบจำลองหลายเส้นด้วย `epifitter::fit_multi` {#sec-multi-fit}
 
 แทนที่จะเขียนลูปปรับแบบจำลองทีละแปลง ฟังก์ชัน `fit_multi()` ของ `epifitter` ช่วยให้เราปรับแบบจำลอง Monomolecular, Exponential, Logistic หรือ Gompertz กับทุกกลุ่มการทดลองได้พร้อมกัน
@@ -252,8 +346,15 @@ ggplot(PowderyMildew, aes(x = time, y = sev)) +
    จงใช้สมการที่ @eq-audpc คำนวณหาค่า AUDPC และคำนวณค่า sAUDPC พร้อมระบุหน่วยของทั้งสองค่า
 2. **การเปรียบเทียบ AUDPC กับ AUDPS:** อธิบายความแตกต่างในเชิงแนวคิดระหว่าง AUDPC และ AUDPS และในสถานการณ์ใดที่ AUDPS ให้ผลการเปรียบเทียบที่เชื่อถือได้ดีกว่า
 3. **การฟิตโมเดลเปรียบเทียบ Gompertz กับ Logistic:**
-   - ใช้ฟังก์ชัน `fit_multi()` กับชุดข้อมูล `PowderyMildew` อีกครั้ง โดยเปลี่ยนแบบจำลองเป็น `model = "gompertz"`
+   - ใช้ผลจาก `multi_fit$Parameters` (ซึ่งมีทุกแบบจำลองอยู่แล้ว) กรองเฉพาะ `model == "Gompertz"` และ `model == "Logistic"`
    - เปรียบเทียบค่า CCC และ RMSE เฉลี่ยระหว่าง Logistic และ Gompertz ในชุดข้อมูลนี้ แบบจำลองใดให้ผลลัพธ์ที่ดีกว่า
 4. **การวิเคราะห์ผลทางสถิติ:** นำค่า `audpc` จากตาราง `pm_indices` เฉพาะระบบ MS, MS above canopy และ Overhead (ซึ่งมีครบทั้งสองระดับความชื้น) ไปวิเคราะห์ความแปรปรวนแบบสองปัจจัย (two-way ANOVA) ด้วย `aov()` หรือ `lm()` (ถ้ารวม Drip และ Furrow จะประมาณ interaction ไม่ได้ เพราะมีช่องที่ไม่มีข้อมูล):
    - ปัจจัย `irrigation_type` และ `moisture` มีผลต่อ AUDPC อย่างมีนัยสำคัญทางสถิติหรือไม่
    - มีปฏิสัมพันธ์ (interaction) ระหว่างสองปัจจัยหรือไม่
+5. **อ่านค่าบนสเกลแปลงรูป:** ถ้า `fit_lin()` ให้ intercept ของ logistic model บนสเกลแปลงรูป $y_0^* = -3.6$ และของ Gompertz model $y_0^* = -1.34$ จงแปลงกลับเป็น $y_0$ ของแต่ละแบบจำลอง แล้วอธิบายว่าทำไมสองค่าจึงไม่เท่ากัน ทั้งที่มาจากข้อมูลชุดเดียวกัน
+6. **รูปแบบของ residual:** ทำตาม @sec-model-selection กับแปลง Overhead, High moisture, block 1
+   - แบบจำลองใดมี residual ไม่มีรูปแบบและ RMSE ต่ำที่สุด
+   - ผลต่างจากแปลง Drip หรือไม่ และสะท้อนอะไรเกี่ยวกับรูปร่างของการระบาดในสองระบบการให้น้ำ
+7. **จำนวนครั้งที่ประเมิน:** ใช้แปลง Drip, High moisture, block 1 เก็บไว้เพียง 3 วันประเมิน (วันที่ 0, 28 และ 63) แล้วปรับทั้งห้าแบบจำลองอีกครั้ง
+   - $R^2$ และ RMSE ของแต่ละแบบจำลองเปลี่ยนไปอย่างไร
+   - ยังแยกได้หรือไม่ว่าแบบจำลองใดเหมาะที่สุด และบอกอะไรเกี่ยวกับการวางแผนความถี่ในการประเมินโรค

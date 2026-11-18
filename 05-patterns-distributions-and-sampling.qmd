@@ -179,7 +179,129 @@ p_b1  <- 2 * pt(abs(t_b1), df = n_pts - 2, lower.tail = FALSE)
 
 ---
 
+## ข้อมูล count: negative binomial และ Taylor's power law {#sec-count-nb-taylor}
+
+หัวข้อที่ผ่านมาเป็นข้อมูล incidence ส่วนข้อมูล count ที่ไม่มีขีดบน เช่น จำนวนแผลต่อใบหรือจำนวนแมลงพาหะต่อต้น ใช้ Poisson เป็นแบบจำลองของรูปแบบสุ่ม และ negative binomial เป็นแบบจำลองของรูปแบบเกาะกลุ่ม (@sec-count-data) หัวข้อนี้ขยายความเรื่องพารามิเตอร์ $k$ และกฎยกกำลังของ Taylor ซึ่งเป็นคู่ของ BPL สำหรับข้อมูล count
+
+### พารามิเตอร์ $k$ ของ negative binomial
+
+จาก @eq-nb-var ความแปรปรวนของ negative binomial คือ $\sigma^2 = \mu + \mu^2/k$ พจน์ $\mu$ คือส่วนที่มีอยู่แล้วในรูปแบบสุ่ม (Poisson) ส่วน $\mu^2/k$ คือความแปรปรวนส่วนเกินที่มาจากการเกาะกลุ่ม @fig-nb-k แสดงว่าที่ค่าเฉลี่ยเท่ากัน $k$ ที่เล็กลงทำให้มีหน่วยที่นับได้ 0 มากขึ้นและมีหน่วยที่นับได้สูงมากบ้าง ซึ่งคือภาพของการเกาะกลุ่ม
+
+```{r}
+#| label: fig-nb-k
+#| fig-cap: "Probability of observing x lesions per leaf for a Poisson distribution and for negative binomial distributions with the same mean (μ = 4) and decreasing k (more aggregation)."
+#| fig-width: 7
+#| fig-height: 4
+nb_k <- expand_grid(x = 0:20, k = c(Inf, 5, 1, 0.3)) |>
+  mutate(
+    prob = if_else(is.infinite(k), dpois(x, 4), dnbinom(x, size = k, mu = 4)),
+    Distribution = factor(if_else(is.infinite(k), "Poisson", paste("NB, k =", k)),
+                          levels = c("Poisson", "NB, k = 5", "NB, k = 1", "NB, k = 0.3"))
+  )
+ggplot(nb_k, aes(x, prob)) +
+  geom_col(width = 0.6) +
+  facet_wrap(~ Distribution, nrow = 1) +
+  labs(x = "Lesions per leaf (x)", y = "P(X = x)")
+```
+
+ใน R ฟังก์ชัน `dnbinom()` เรียก $k$ ว่า `size` และค่าเฉลี่ยว่า `mu` ตัวอย่างข้อมูลจริงใช้ชุด `aphids` ใน `epiphy` ซึ่งเป็นจำนวนเพลี้ยอ่อนใน 63 หน่วยตัวอย่าง แม้จะเป็นแมลง แต่หลักการเดียวกับการนับจำนวนแผลหรือจำนวนพาหะของโรคพืช และต้นฉบับของบทนี้ก็ใช้ข้อมูลแมลงเช่นกัน
+
+```{r}
+#| label: aphids-nb
+cnt_aphids <- epiphy::count(aphids, mapping(x = x, y = y, i = i))
+fit_aphids <- fit_two_distr(cnt_aphids)
+fit_aphids$param$aggregated
+fit_aphids$llr
+```
+
+```{r}
+#| label: aphids-nb-values
+#| include: false
+k_aph  <- fit_aphids$param$aggregated["k", "Estimate"]
+mu_aph <- fit_aphids$param$aggregated["mu", "Estimate"]
+```
+
+ได้ $\hat{k} = `r round(k_aph, 2)`$ ซึ่งเล็กกว่า 1 มาก ข้อมูลชุดนี้จึงเกาะกลุ่มสูง ความแปรปรวนที่คาดหมายจาก negative binomial คือ $`r round(mu_aph, 1)` + `r round(mu_aph, 1)`^2/`r round(k_aph, 2)` \approx `r round(mu_aph + mu_aph^2 / k_aph, 0)`$ เทียบกับ `r round(mu_aph, 1)` ถ้าเป็น Poisson
+
+### ขนาดหน่วยตัวอย่าง
+
+$k$ และดัชนีการเกาะกลุ่มอื่นขึ้นกับขนาดหน่วยตัวอย่าง (@sec-count-data) `epiphy` มีฟังก์ชัน `clump()` ที่รวมหน่วยตัวอย่างข้างเคียงเข้าเป็นหน่วยใหญ่ขึ้น เราจึงเห็นผลของขนาดหน่วยได้จากข้อมูลชุดเดียวกัน
+
+```{r}
+#| label: aphids-clump
+#| warning: false
+aph_2x2 <- clump(cnt_aphids, unit_size = c(x = 2, y = 2))
+fit_aph_2x2 <- fit_two_distr(aph_2x2)
+tibble(
+  unit_size = c("1 x 1", "2 x 2"),
+  n_units   = c(nrow(cnt_aphids$data), nrow(aph_2x2$data)),
+  mean      = c(mean(cnt_aphids$data$i), mean(aph_2x2$data$i)),
+  D         = c(agg_index(cnt_aphids)$index, agg_index(aph_2x2)$index),
+  k         = c(k_aph, fit_aph_2x2$param$aggregated["k", "Estimate"])
+)
+```
+
+`clump()` ต้องตัดหน่วยที่เหลือเศษทิ้งเพื่อให้ได้กลุ่มขนาดเท่ากัน (มีคำเตือนบอกจำนวนหน่วยที่ตัด) การเปรียบเทียบ $k$ หรือ $D$ ระหว่างการศึกษาจึงทำได้เฉพาะเมื่อใช้หน่วยตัวอย่างขนาดเดียวกัน
+
+### Taylor's power law
+
+@taylor1961 พบว่าในข้อมูล count หลายชุด ความแปรปรวนสัมพันธ์กับค่าเฉลี่ยแบบยกกำลัง
+
+$$
+s^2 = a\, \bar{x}^{\,b}, \qquad \ln(s^2) = \ln(a) + b \ln(\bar{x})
+$$ {#eq-taylor}
+
+โดย $\bar{x}$ และ $s^2$ คือค่าเฉลี่ยและความแปรปรวนของ count จากข้อมูลแต่ละชุด (แต่ละแปลงหรือแต่ละวันสำรวจ) รูปแบบสุ่ม (Poisson) ได้ $a = 1$, $b = 1$ ส่วน $b > 1$ หมายถึงการเกาะกลุ่มเพิ่มขึ้นตามความหนาแน่น กฎนี้เป็นต้นแบบของ BPL (@sec-binary-power-law) โดย BPL แทน $\bar{x}$ ด้วยความแปรปรวนของ binomial เพราะข้อมูล incidence มีขีดบน ฟังก์ชัน `power_law()` ตัวเดียวกันคำนวณ Taylor's power law ให้เมื่อใส่ข้อมูล count ตัวอย่างข้างล่างใช้ชุด `arthropods` ซึ่งนับซ้ำในแปลงเดิม `r length(unique(arthropods$t))` ครั้ง
+
+```{r}
+#| label: taylor-arthropods
+arth_list <- split(arthropods, arthropods$t) |>
+  lapply(\(d) epiphy::count(d, mapping(x = x, y = y, i = i)))
+taylor_fit <- power_law(arth_list)
+taylor_fit$param[1:2, ]
+```
+
+```{r}
+#| label: fig-taylor
+#| fig-cap: "Taylor's power law for the arthropods data: log variance against log mean of counts, one point per sampling date."
+#| fig-width: 6
+#| fig-height: 4.5
+plot(taylor_fit)
+```
+
+```{r}
+#| label: taylor-values
+#| include: false
+b_tay  <- taylor_fit$param["log(x): b", "Estimate"]
+se_tay <- taylor_fit$param["log(x): b", "Std. Error"]
+p_tay1 <- 2 * pt(abs((b_tay - 1) / se_tay), df = length(arth_list) - 2, lower.tail = FALSE)
+```
+
+ได้ $b = `r round(b_tay, 2)`$ (SE `r round(se_tay, 2)`) เมื่อทดสอบว่าต่างจาก 1 ได้ $p = `r signif(p_tay1, 2)`$ ข้อสรุปเหมือนกรณี BPL ในหัวข้อก่อน คือด้วยข้อมูลเพียงไม่กี่ชุด ช่วงความเชื่อมั่นของ $b$ ยังกว้าง
+
+---
+
 ## การออกแบบแผนการสุ่มตัวอย่าง (Sampling Plans) {#sec-sample-size}
+
+ก่อนเข้าสูตร ควรเข้าใจที่มาก่อน ถ้าสุ่มหน่วยตัวอย่าง $N$ หน่วยอย่างเป็นอิสระ จากประชากรที่มีความแปรปรวนระหว่างหน่วยเท่ากับ $\sigma^2$ ความแปรปรวนของค่าเฉลี่ยตัวอย่างคือ
+
+$$
+\mathrm{Var}(\bar{x}) = \frac{\sigma^2}{N}, \qquad \mathrm{SE}(\bar{x}) = \frac{\sigma}{\sqrt{N}}
+$$ {#eq-var-mean}
+
+เพิ่มจำนวนหน่วยสี่เท่า SE จึงลดลงเพียงครึ่งเดียว และที่สำคัญคือ $\sigma^2$ ขึ้นกับรูปแบบเชิงพื้นที่ แปลงที่เกาะกลุ่มมี $\sigma^2$ สูงกว่า จึงต้องใช้ $N$ มากกว่าเพื่อให้ได้ความแม่นเท่ากัน สูตรขนาดตัวอย่างทั้งหมดในหัวข้อนี้มาจากการกำหนดให้ $\mathrm{SE}(\bar{x})$ หรือช่วงความเชื่อมั่นของค่าเฉลี่ยไม่เกินสัดส่วน $D$ ของค่าเฉลี่ย แล้วแก้สมการหา $N$ ตัวอย่างการจำลองข้างล่างยืนยัน @eq-var-mean ด้วยข้อมูล `aphids`
+
+```{r}
+#| label: sim-var-mean
+set.seed(2026)
+aph_counts <- aphids$i
+sim_se <- tibble(N = c(5, 10, 20, 40)) |>
+  mutate(
+    simulated_SE   = map_dbl(N, \(n) sd(replicate(2000, mean(sample(aph_counts, n, replace = TRUE))))),
+    theoretical_SE = sd(aph_counts) / sqrt(N)
+  )
+sim_se
+```
 
 เป้าหมายสูงสุดของการศึกษา spatial pattern คือการกำหนด **ขนาดตัวอย่างที่เหมาะสม ($N$)** เพื่อให้การประมาณอุบัติการณ์เฉลี่ยมีความคลาดเคลื่อนไม่เกินระดับที่ยอมรับได้ (เช่น relative error $D = 0.10$ หรือ 10% ของค่าเฉลี่ย)
 
@@ -243,3 +365,7 @@ ggplot(df_sample, aes(x = p, y = N_required, color = Pattern, linetype = Pattern
    - หากโรคกระจายแบบสุ่ม ($\rho = 0$) ต้องสุ่มกี่จุด
    - หากโรคมีการเกาะกลุ่มที่ $\rho = 0.15$ ต้องสุ่มเพิ่มขึ้นเป็นกี่จุด
 4. **ข้อได้เปรียบของ Beta-Binomial เทียบกับ Binomial:** อธิบายข้อจำกัดของการใช้ Binomial regression (logistic GLM) เมื่อข้อมูลในแปลงมีความแปรปรวนเกิน (overdispersion) และเหตุใด Beta-Binomial จึงช่วยแก้ปัญหานี้ได้
+5. **ค่า $k$ กับความแปรปรวน:** ถ้าจำนวนแผลต่อใบมีค่าเฉลี่ย 4 แผล คำนวณความแปรปรวนเมื่อ $k = 0.3$, 1 และ 5 ด้วย @eq-nb-var แล้วตรวจคำตอบด้วยการสุ่ม `rnbinom(10000, size = k, mu = 4)` และ `var()`
+6. **ความน่าจะเป็นของศูนย์:** ใช้ `dnbinom(0, size = k, mu = 4)` เทียบกับ `dpois(0, 4)` เมื่อโรคเกาะกลุ่มมาก ($k = 0.3$) สัดส่วนใบที่ไม่มีแผลเลยเป็นเท่าใด ผลนี้มีความหมายอย่างไรถ้าผู้สำรวจตัดสินว่า "แปลงนี้ไม่มีโรค" จากการสุ่มดูใบเพียงไม่กี่ใบ
+7. **ขนาดหน่วยตัวอย่าง:** ใช้ `clump()` กับ `cnt_aphids` ที่ขนาด `c(x = 3, y = 3)` แล้วเทียบ $D$ และ $k$ กับหน่วย 1 × 1 และ 2 × 2 ในหัวข้อ @sec-count-nb-taylor แนวโน้มเป็นอย่างไร
+8. **SE ของค่าเฉลี่ย:** จาก @eq-var-mean ถ้าต้องการลด SE ของค่าเฉลี่ยลงเหลือหนึ่งในสาม ต้องเพิ่มจำนวนหน่วยตัวอย่างกี่เท่า ตรวจคำตอบด้วยโค้ดใน chunk `sim-var-mean`
