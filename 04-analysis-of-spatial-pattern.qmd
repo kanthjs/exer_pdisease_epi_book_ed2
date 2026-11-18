@@ -16,13 +16,15 @@
 2. **แบบเกาะกลุ่ม (Aggregated / Clustered pattern):** พืชที่เป็นโรคอยู่ใกล้ชิดกันมากกว่าที่ควรจะเป็นตามการสุ่ม มักพบในโรคที่มีการแพร่กระจายระยะใกล้ (secondary spread) จากต้นติดเชื้อสู่ต้นข้างเคียงผ่านหยดน้ำฝนกระเด็น หรือเชื้อก่อโรคที่อาศัยอยู่ในดินเป็นหย่อม เช่น โรคกาบใบแห้งข้าว
 3. **แบบสม่ำเสมอ (Uniform / Regular pattern):** จุดที่เป็นโรคมีระยะห่างเท่า ๆ กันอย่างเป็นระเบียบ พบได้ยากมากในธรรมชาติ แต่มักเกิดจากการจัดการของมนุษย์
 
-| รูปแบบเชิงพื้นที่ | นิยามทางสถิติ | กลไกทางชีววิทยาที่เกี่ยวข้อง | การแจกแจงทางสถิติที่สอดคล้อง |
-|---|---|---|---|
-| Random | ความแปรปรวนเท่ากับค่าเฉลี่ย ($\sigma^2 = \mu$) | เชื้อปลิวมาจากระยะไกล ไม่ติดเชื้อต่อ | Poisson หรือ Binomial |
-| Aggregated | ความแปรปรวนสูงกว่าค่าเฉลี่ย ($\sigma^2 > \mu$) | เชื้อระบาดระยะใกล้จากต้นติดเชื้อ, ดิน | Negative Binomial หรือ Beta-Binomial |
-| Regular | ความแปรปรวนต่ำกว่าค่าเฉลี่ย ($\sigma^2 < \mu$) | การแก่งแย่งแข่งขัน, การปลูกระยะห่าง | Binomial (ที่มีการจำกัด) |
+| Pattern | Count data: variance vs. mean $\mu$ | Count data: reference distribution | Incidence data ($n$ plants per quadrat): variance vs. $np(1-p)$ | Incidence data: reference distribution | Possible mechanism |
+|---|---|---|---|---|---|
+| Random | $\sigma^2 = \mu$ | Poisson | $\sigma^2 = np(1-p)$ | binomial | Independent infections, e.g., inoculum from distant sources |
+| Aggregated | $\sigma^2 > \mu$ | negative binomial | $\sigma^2 > np(1-p)$ | beta-binomial | Short-distance spread from infected plants, patchy soilborne inoculum |
+| Regular | $\sigma^2 < \mu$ | (rare; no standard model) | $\sigma^2 < np(1-p)$ | (rare; no standard model) | Rare in nature |
 
-: รูปแบบเชิงพื้นที่ของโรคพืชและสมบัติทางสถิติ {#tbl-spatial-types}
+: Spatial patterns of diseased plants and their statistical signatures for count and incidence data {#tbl-spatial-types}
+
+ข้อมูลสองชนิดนี้ใช้เกณฑ์ต่างกัน ข้อมูล count (เช่น จำนวนแผลต่อใบ) ไม่มีขีดบน จึงเทียบความแปรปรวนกับค่าเฉลี่ยตาม Poisson distribution ส่วนข้อมูล incidence (จำนวนต้นเป็นโรคจาก $n$ ต้น) มีขีดบนเท่ากับ $n$ จึงต้องเทียบกับความแปรปรวนของ binomial distribution คือ $np(1-p)$ ซึ่งน้อยกว่าค่าเฉลี่ย $np$ เสมอ การใช้เกณฑ์ $\sigma^2 = \mu$ กับข้อมูล incidence จึงจะประเมินการเกาะกลุ่มต่ำเกินจริง
 
 ```{r}
 #| label: setup
@@ -73,7 +75,7 @@ grid.arrange(p_rand, p_agg, ncol = 2)
 
 ## การทดสอบ Ordinary Runs Test {#sec-runs-test}
 
-สำหรับข้อมูลต้นพืชที่เป็นโรคตามแนวแถว (transect หรือ row) ที่บันทึกค่าเป็นข้อมูลทวิภาค (binary: $0 =$ ปกติ, $1 =$ เป็นโรค) วิธีการทดสอบการเกาะกลุ่มเชิงพื้นที่ที่ง่ายและคลาสสิกที่สุดคือ **Ordinary Runs Test** (Gibbons 1976; Madden et al. 1982)
+สำหรับข้อมูลต้นพืชที่เป็นโรคตามแนวแถว (transect หรือ row) ที่บันทึกค่าเป็นข้อมูลทวิภาค (binary: $0 =$ ปกติ, $1 =$ เป็นโรค) วิธีการทดสอบการเกาะกลุ่มเชิงพื้นที่ที่ง่ายและคลาสสิกที่สุดคือ **Ordinary Runs Test** [@gibbons1976; @madden1982runs]
 
 ### หลักการของ Runs Test
 
@@ -83,7 +85,7 @@ $$
 $$
 ลำดับนี้มี 5 runs: $(0, 0, 0), (1, 1), (0), (1, 1, 1, 1), (0)$
 
-- หากต้นเป็นโรคเกิดขึ้นแบบสุ่ม จำนวน run สังเกต ($U$) จะเป็นไปตามการแจกแจงปกติที่มีค่าคาดหมาย $E(U)$ และความแปรปรวน $V(U)$
+- หากต้นเป็นโรคเกิดขึ้นแบบสุ่ม การแจกแจงของจำนวน run สังเกต ($U$) ประมาณได้ด้วย normal distribution ที่มีค่าคาดหมาย $E(U)$ และความแปรปรวน $V(U)$
 - หากโรคมีการ **เกาะกลุ่ม (Aggregated)** ต้นเป็นโรคจะอยู่ติดกัน ทำให้จำนวน run สังเกต **น้อยกว่าที่คาดหมาย** ($U < E(U)$)
 - ค่าสถิติมาตรฐาน $Z$ คำนวณได้จาก:
 
@@ -107,19 +109,18 @@ row_clustered <- c(rep(0, 8), rep(1, 7), rep(0, 10), rep(1, 5))
 res_rand <- oruns_test(row_random)
 res_clust <- oruns_test(row_clustered)
 
+# oruns_test() returns U, EU, sU, Z, pvalue and result
 tibble(
-  Pattern = c("Simulated Random", "Simulated Clustered"),
+  Pattern = c("Simulated random", "Simulated clustered"),
   N_plants = c(length(row_random), length(row_clustered)),
-  Observed_runs = c(res_rand$runs, res_clust$runs),
-  Expected_runs = c(res_rand$mu, res_clust$mu),
-  Z_score = c(res_rand$z, res_clust$z),
-  P_value = c(res_rand$p_value, res_clust$p_value)
+  Observed_runs = c(res_rand$U, res_clust$U),
+  Expected_runs = c(res_rand$EU, res_clust$EU),
+  Z_score = c(res_rand$Z, res_clust$Z),
+  P_value = c(res_rand$pvalue, res_clust$pvalue)
 )
 ```
 
-ผลการทดสอบแสดงว่า:
-- แถวพืชแบบสุ่มมีค่า $Z = 0.17$ ($p = 0.57$) สอดคล้องกับ Random pattern
-- แถวพืชแบบเกาะกลุ่มมีค่า $Z = -2.90$ ($p = 0.0018 < 0.05$) บ่งชี้การเกาะกลุ่มอย่างมีนัยสำคัญยิ่ง
+ผลการทดสอบแสดงว่า แถวพืชที่สุ่มขึ้นมีค่า $Z = `r round(res_rand$Z, 2)`$ ($p = `r signif(res_rand$pvalue, 2)`$) ส่วนแถวที่จัดให้เกาะกลุ่มมีค่า $Z = `r round(res_clust$Z, 2)`$ ($p = `r signif(res_clust$pvalue, 2)`$) ฟังก์ชันสรุปผลไว้ใน `result` ว่า "`r res_rand$result`" และ "`r res_clust$result`" ตามลำดับ (ข้อมูลสมมติ ตัวเลขจะเปลี่ยนถ้าเปลี่ยน `set.seed()`)
 
 ---
 
@@ -133,6 +134,8 @@ tibble(
 - **Black-White (BW joins):** ต้นเป็นโรคอยู่ติดกับต้นปกติ
 
 หากโรคมีการเกาะกลุ่ม เราจะพบจำนวน **BB joins สูงกว่าที่คาดหมาย** ($Z_{BB} > 1.64$) และจำนวน BW joins ต่ำกว่าที่คาดหมาย
+
+ฟังก์ชัน `join_count()` ของ `r4pde` ใช้ชื่อตามสถานะต้นพืช คือ **DD** (diseased–diseased) ตรงกับ BB และ **HD** (healthy–diseased) ตรงกับ BW และรายงานเฉพาะสองชนิดนี้
 
 ```{r}
 #| label: join-count-demo

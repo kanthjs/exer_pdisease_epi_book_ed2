@@ -32,10 +32,19 @@ theme_set(theme_minimal(base_family = "Google Sans"))
 
 ## ชุดข้อมูลตัวอย่าง: การทดลองโรคราแป้ง
 
-เราจะใช้ชุดข้อมูล `PowderyMildew` ในแพ็กเกจ `epifitter` ซึ่งเป็นการทดลองประเมินความรุนแรงของโรคราแป้ง (severity; สัดส่วน 0 ถึง 1) ตามเวลา (`time` ในหน่วยวัน) โดยมีปัจจัยการทดลอง 2 ปัจจัยคือ:
-1. ระบบการให้น้ำ (`irrigation_type`): Drip vs Overhead
-2. ระดับความชื้น (`moisture`): Low vs High moisture
-3. มีการทำซ้ำ 3 บล็อก (`block`: 1, 2, 3)
+เราจะใช้ชุดข้อมูล `PowderyMildew` ในแพ็กเกจ `epifitter` ซึ่งเป็นการทดลองประเมินความรุนแรงของโรคราแป้ง (severity; สัดส่วน 0 ถึง 1) ตามเวลา (`time` ในหน่วยวัน) โดยมีปัจจัยการทดลอง 2 ปัจจัยและการทำซ้ำ 3 บล็อก (`block`: 1, 2, 3) ได้แก่ ระบบการให้น้ำ (`irrigation_type`) 5 แบบ คือ Drip, Furrow, MS, MS above canopy และ Overhead กับระดับความชื้น (`moisture`) 2 ระดับ คือ High moisture และ Moderate moisture
+
+การออกแบบนี้ไม่สมดุล (@tbl-pm-design) Drip มีเฉพาะ High moisture และ Furrow มีเฉพาะ Moderate moisture จึงรวม 8 กรรมวิธี ไม่ใช่ 10 การเปรียบเทียบผลของระบบการให้น้ำจึงควรทำภายในระดับความชื้นเดียวกัน มิฉะนั้นผลของสองปัจจัยจะปนกัน (confounded)
+
+```{r}
+#| label: tbl-pm-design
+#| tbl-cap: "Number of blocks per irrigation type and moisture level in PowderyMildew"
+PowderyMildew |>
+  distinct(irrigation_type, moisture, block) |>
+  count(irrigation_type, moisture) |>
+  pivot_wider(names_from = moisture, values_from = n, values_fill = 0) |>
+  knitr::kable()
+```
 
 ```{r}
 #| label: load-data
@@ -100,9 +109,9 @@ ggplot(pm_summary, aes(x = time, y = mean_sev, color = irrigation_type, linetype
   )
 ```
 
-จาก @fig-pm-mean-curves จะเห็นแนวโน้มว่า:
-- ระบบการให้น้ำแบบ Overhead มีความรุนแรงของโรคสูงกว่าแบบ Drip อย่างเห็นได้ชัดในทุกช่วงเวลา
-- สภาพ High moisture เร่งการลุกลามของโรคให้เร็วขึ้นทั้งสองระบบ
+จาก @fig-pm-mean-curves กรรมวิธีแบ่งเป็นสองกลุ่มชัดเจน Drip, Furrow และ MS มีความรุนแรงของโรคปลายฤดูราว 35–45% ขณะที่ MS above canopy และ Overhead อยู่ราว 12–17% ระบบที่ให้น้ำจากเหนือทรงพุ่มจึงมีโรคราแป้งน้อยกว่า ซึ่งสอดคล้องกับชีววิทยาของเชื้อราแป้งที่สปอร์ถูกชะล้างหรือเสียหายเมื่อใบเปียกน้ำ
+
+ผลของความชื้นไม่สม่ำเสมอ ใน MS ระดับ Moderate กลับมีโรคสูงกว่า High เล็กน้อย ส่วนใน Overhead และ MS above canopy สองระดับแทบไม่ต่างกัน ข้อสรุปเรื่องความชื้นจึงต้องรอการวิเคราะห์ทางสถิติ ไม่ควรสรุปจากกราฟอย่างเดียว
 
 ---
 
@@ -131,7 +140,7 @@ $$
 
 ### 2. Area Under the Disease Progress Stairs (AUDPS)
 
-Simko and Piepho (2012) เสนอ **AUDPS** เพื่อปรับปรุงจุดอ่อนของ AUDPC โดยให้ความสำคัญกับจุดเริ่มต้นและจุดสิ้นสุดของการประเมินอย่างสมดุลยิ่งขึ้น:
+@simko2012audps เสนอ **AUDPS** เพื่อปรับปรุงจุดอ่อนของ AUDPC โดยให้ความสำคัญกับจุดเริ่มต้นและจุดสิ้นสุดของการประเมินอย่างสมดุลยิ่งขึ้น:
 
 $$
 \text{AUDPS} = \text{AUDPC} + \left[ \frac{y_1 + y_n}{2} \right] \left( \frac{t_n - t_1}{n - 1} \right)
@@ -245,6 +254,6 @@ ggplot(PowderyMildew, aes(x = time, y = sev)) +
 3. **การฟิตโมเดลเปรียบเทียบ Gompertz กับ Logistic:**
    - ใช้ฟังก์ชัน `fit_multi()` กับชุดข้อมูล `PowderyMildew` อีกครั้ง โดยเปลี่ยนแบบจำลองเป็น `model = "gompertz"`
    - เปรียบเทียบค่า CCC และ RMSE เฉลี่ยระหว่าง Logistic และ Gompertz ในชุดข้อมูลนี้ แบบจำลองใดให้ผลลัพธ์ที่ดีกว่า
-4. **การวิเคราะห์ผลทางสถิติ:** นำค่า `audpc` ที่ได้จากตาราง `pm_indices` ไปทดสอบการวิเคราะห์ความแปรปรวน (Two-way ANOVA) ใน R ด้วยฟังก์ชัน `aov()` หรือ `lm()`:
+4. **การวิเคราะห์ผลทางสถิติ:** นำค่า `audpc` จากตาราง `pm_indices` เฉพาะระบบ MS, MS above canopy และ Overhead (ซึ่งมีครบทั้งสองระดับความชื้น) ไปวิเคราะห์ความแปรปรวนแบบสองปัจจัย (two-way ANOVA) ด้วย `aov()` หรือ `lm()` (ถ้ารวม Drip และ Furrow จะประมาณ interaction ไม่ได้ เพราะมีช่องที่ไม่มีข้อมูล):
    - ปัจจัย `irrigation_type` และ `moisture` มีผลต่อ AUDPC อย่างมีนัยสำคัญทางสถิติหรือไม่
    - มีปฏิสัมพันธ์ (interaction) ระหว่างสองปัจจัยหรือไม่
